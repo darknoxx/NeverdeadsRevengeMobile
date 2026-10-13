@@ -62,7 +62,7 @@ The flags:
 | L | 36px | **56x25** | 1232x1075 | the biggest letters, a tighter view |
 
 Screenshots of the same moment at all three, from `--screenshot`:
-`docs/zoom_s.png`, `docs/zoom_m.png`, `docs/zoom_l.png`.
+`docs/zoom_S.png`, `docs/zoom_M.png`, `docs/zoom_L.png`.
 
 ## The screen
 
