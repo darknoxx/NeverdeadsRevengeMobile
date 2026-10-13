@@ -22,6 +22,7 @@ from __future__ import annotations
 import pygame
 
 __all__ = [
+    "KeyEvent",
     "KEYS",
     "BUTTONS",
     "AXES",
@@ -31,6 +32,30 @@ __all__ = [
     "stick_direction",
     "describe_pad",
 ]
+
+class KeyEvent:
+    """A press, dressed as the event the screens already answer.
+
+    The screens ask a press two questions and no more: *was this a repeat?* and
+    *what did it type?*. The desktop build answers them from a QKeyEvent; here
+    the app answers them itself, which is why the screens did not have to be
+    touched at all.
+    """
+
+    def __init__(self, name: str, repeat: bool = False, text: str = "") -> None:
+        self.name = name
+        self._repeat = repeat
+        self._text = text
+
+    def isAutoRepeat(self) -> bool:  # noqa: N802 - the desktop build's spelling
+        return self._repeat
+
+    def text(self) -> str:
+        return self._text
+
+    def __repr__(self) -> str:  # pragma: no cover - for a debugger, not a game
+        return f"KeyEvent({self.name!r}, repeat={self._repeat})"
+
 
 #: Keyboard, for development on a desktop and for a pad that lies about itself.
 KEYS: dict[int, str] = {

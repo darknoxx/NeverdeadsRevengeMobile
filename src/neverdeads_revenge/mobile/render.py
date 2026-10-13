@@ -83,6 +83,8 @@ ULTIMATE_PROMPTS: dict[str, tuple[str, tuple[int, int, int]]] = {
 _MAP_FLOOR = 18
 
 _BAR_CELLS = 14
+#: How much of a worn item's name the HUD shows: the last word, clipped.
+_SHORT_NAME = 12
 _SLOT_GLYPH = {"weapon": WEAPON_GLYPH, "armour": ARMOUR_GLYPH, "amulet": AMULET_GLYPH}
 
 
@@ -97,7 +99,11 @@ def regions(cols: int, rows: int) -> dict[str, tuple[int, int, int, int]]:
     # health, the run's numbers, the ultimate, and what is working. A screen
     # with the rows to spare shows all four; a short one keeps the first three,
     # because those are the ones a decision is made with.
-    hud = 6 if rows >= 40 else 5 if rows >= 28 else 4
+    # Health, the numbers, the gold, the gear, the ask, what is working, and
+    # the charge -- seven lines, and the rule under them. A screen with the
+    # rows to spare shows all of it; a short one keeps the top of the list,
+    # which is why the order is health, numbers, gold, gear, ask.
+    hud = 8 if rows >= 30 else 6 if rows >= 22 else 5
     log = max(4, min(14, rows - hud - _MAP_FLOOR))
     map_h = rows - hud - log
     return {
@@ -212,11 +218,34 @@ def hud_lines(state: GameState) -> list[tuple[str, str]]:
         )
     )
 
+    # The numbers a fight is decided with. The desktop had them in a sidebar
+    # and the thread asked for them here: the top strip has the room, and a
+    # handheld should not make the player open a sheet to know how hard they
+    # hit or how well they dodge.
+    low, high = player.damage_range
+    lines.append(
+        (
+            f"DMG {low}-{high}  CRT {player.crit_chance:.0%}  SPD {player.speed:.2f}"
+            f"  ARM {player.armor}  EVA {player.evasion}",
+            "bold white",
+        )
+    )
+
     healing = sum(1 for item in state.inventory if item.heal > 0)
     draughts = f"Gold {state.gold}   Draughts {len(state.inventory)}/{state.pack_capacity}"
     if healing:
         draughts += " q"
     lines.append((f"{draughts}   Kills {state.kills}", "bold yellow"))
+
+    # What is worn, by its glyph and the last word of its name -- the same
+    # shorthand the desktop's sidebar used, so the map's alphabet and the HUD's
+    # agree about what a `)` is.
+    gear = []
+    for slot in ("weapon", "armour", "amulet"):
+        item = player.equipment.get(slot)
+        name = item.name.split()[-1][:_SHORT_NAME] if item else "—"
+        gear.append(f"{_SLOT_GLYPH[slot]} {name}")
+    lines.append(("  ".join(gear), "bold white"))
 
     return lines
 
