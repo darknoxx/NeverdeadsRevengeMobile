@@ -86,11 +86,13 @@ screen (drawn straight onto the panel, not into the buffer, so measuring does
 not force the re-render it measures). The pad bench shows the last and worst
 `render` / `post` / `present` in milliseconds.
 
-The renderer caches the **glyph frame** and re-renders it only when the buffer
-itself changes. Effects and the shake draw over the cached frame, so a blood
-burst costs a copy and a few dots instead of two thousand cell blits -- and the
-ultimate's breath is *stepped*, not smooth, because a smooth one changed the HUD
-text every frame and so re-rendered the world sixty times a second.
+The renderer caches the whole frame -- glyphs, map zoom *and* the CRT -- and
+rebuilds it only when the buffer itself changes. Effects and the shake draw over
+the cached copy, so a blood burst costs a copy and a few dots instead of two
+thousand cell blits and a bloom: the CRT is baked once per change, not once per
+frame, which is what made it unplayable on the handheld (2 fps). The ultimate's
+breath is *stepped*, not smooth, because a smooth one changed the HUD text every
+frame and so rebuilt the frame sixty times a second.
 
 ## The pad
 

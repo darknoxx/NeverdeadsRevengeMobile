@@ -45,8 +45,8 @@ def scanline_overlay(
 def bloom(
     image: pygame.Surface,
     *,
-    downscale: int = 4,
-    radius: int = 4,
+    downscale: int = 6,
+    radius: int = 3,
     intensity: float = 0.55,
 ) -> None:
     """A soft glow, added back onto ``image`` in place.
@@ -55,6 +55,11 @@ def bloom(
     reads as light spilling is a low-frequency version of the picture, and a
     low-frequency version does not need the pixels. ``intensity`` scales it back
     down before it is added, so the glow is a hint and not a wash.
+
+    The *growth* is a plain nearest-neighbour ``scale``, not a smooth one: the
+    surface is already blurred, so filtering it again would only cost time --
+    and on the handheld the smooth upscale was a large part of why bloom was
+    unplayable.
     """
     width, height = image.get_size()
     small = pygame.transform.smoothscale(
@@ -63,9 +68,9 @@ def bloom(
     blurred = pygame.Surface(small.get_size())
     pygame.transform.box_blur(small, radius, dest_surface=blurred)
     if intensity < 1.0:
-        # Dim the glow while it is *small*: the same multiply, on a
-        # sixteenth of the pixels, instead of a full-screen pass.
+        # Dim the glow while it is *small*: the same multiply, on a fraction of
+        # the pixels, instead of a full-screen pass.
         level = int(255 * intensity)
         blurred.fill((level, level, level), special_flags=pygame.BLEND_MULT)
-    glow = pygame.transform.smoothscale(blurred, (width, height))
+    glow = pygame.transform.scale(blurred, (width, height))
     image.blit(glow, (0, 0), special_flags=pygame.BLEND_ADD)

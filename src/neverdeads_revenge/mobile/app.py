@@ -273,11 +273,14 @@ class MobileApp:
         self._buffer_dirty = True
 
     # -- the picture ---------------------------------------------------------
-    def _compose_glyphs(self) -> pygame.Surface:
-        """Draw the stack into one frame of *glyphs*, map zoom included.
+    def _compose_frame(self) -> pygame.Surface:
+        """Draw the stack into one finished frame: glyphs, zoom, and the CRT.
 
-        This is the expensive part -- two thousand blits -- so it is the part
-        that is cached: see :meth:`redraw`.
+        This is the expensive part -- two thousand blits, a map scale, and the
+        bloom -- so it is the part that is cached: see :meth:`redraw`. The CRT
+        is baked in *here* rather than applied per frame, because per frame is
+        what made the effects unplayable on the handheld: bloom ran sixty times
+        a second over a blood burst that changed nothing but the dots.
         """
         self._buffer.clear()
         # An opaque modal: nothing under it is drawn. A menu is a panel, not a
@@ -307,11 +310,14 @@ class MobileApp:
                 self.font.cell_h,
                 self.map_zoom,
             )
+        if self.bloom_on:
+            bloom(image)
+        if self.scanlines_on:
+            image.blit(self._scanlines(image.get_size()), (0, 0))
         return image
 
-    def _scanlines(self) -> pygame.Surface:
-        """The scanline overlay, built once per screen size and then reused."""
-        size = self.screen.get_size() if self.screen is not None else self.surface_size
+    def _scanlines(self, size: tuple[int, int]) -> pygame.Surface:
+        """The scanline overlay, built once per size and then reused."""
         if self._scan_overlay is None or self._scan_overlay.get_size() != size:
             self._scan_overlay = scanline_overlay(size)
         return self._scan_overlay
@@ -319,27 +325,24 @@ class MobileApp:
     def redraw(self) -> None:
         """Draw the frame and put it on the screen.
 
-        The glyphs are re-rendered only when the *buffer* changed. Effects and
-        the shake reuse the cached frame, so a blood burst costs a copy and a
-        few dots instead of two thousand blits -- which is what made the CRT
-        feel unaffordable on the handheld.
+        The frame -- glyphs, zoom and CRT -- is rebuilt only when the *buffer*
+        changes. Effects and the shake draw over the cached copy, so a blood
+        burst costs a copy and a few dots instead of two thousand blits and a
+        bloom, which is what made the effects unplayable on the handheld.
         """
         started = time.perf_counter()
         if self._glyph_frame is None or self._buffer_dirty:
-            self._glyph_frame = self._compose_glyphs()
+            self._glyph_frame = self._compose_frame()
             self._buffer_dirty = False
         self._render_ms = (time.perf_counter() - started) * 1000.0
 
+        post_started = time.perf_counter()
         # Copy only when something is about to write on it.
-        if self.effects.active or self.bloom_on:
+        if self.effects.active:
             image = self._glyph_frame.copy()
+            self.effects.draw(image)
         else:
             image = self._glyph_frame
-
-        post_started = time.perf_counter()
-        self.effects.draw(image)
-        if self.bloom_on:
-            bloom(image)
         self._post_ms = (time.perf_counter() - post_started) * 1000.0
 
         self._present_ms = 0.0
@@ -352,8 +355,6 @@ class MobileApp:
             else:
                 scaled = pygame.transform.smoothscale(image, self.window_size)
                 self.screen.blit(scaled, (dx, dy))
-            if self.scanlines_on:
-                self.screen.blit(self._scanlines(), (0, 0))
             if self.show_fps:
                 self._draw_fps_readout()
             # Measured before the flip, which may wait on the panel: this is
@@ -368,15 +369,11 @@ class MobileApp:
 
     def screenshot(self, path: str) -> None:
         """Render one frame to a file, without a window."""
-        frame = self._compose_glyphs()
+        frame = self._compose_frame()
         self.effects.draw(frame)
-        if self.bloom_on:
-            bloom(frame)
         image = pygame.Surface(self.surface_size)
         image.fill((0, 0, 0))
         image.blit(frame, self.offset)
-        if self.scanlines_on:
-            image.blit(self._scanlines(), (0, 0))
         pygame.image.save(image, path)
 
     def timings(self) -> tuple[float, float, float]:
@@ -407,12 +404,16 @@ class MobileApp:
 
     # -- the CRT switches ----------------------------------------------------
     def toggle_scanlines(self) -> None:
+        # The CRT is baked into the cached frame now, so a switch means the
+        # frame must be rebuilt -- once, not per frame.
         self.scanlines_on = not self.scanlines_on
         self._dirty = True
+        self._buffer_dirty = True
 
     def toggle_bloom(self) -> None:
         self.bloom_on = not self.bloom_on
         self._dirty = True
+        self._buffer_dirty = True
 
     def toggle_map_zoom(self) -> None:
         """Cycle the playfield between life-size and magnified."""
