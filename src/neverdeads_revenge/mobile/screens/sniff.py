@@ -72,8 +72,10 @@ class SniffScreen(Screen):
             f"(last/peak; live: pause -> SHOW FPS)",
             parse_style(ASH),
         )
+        last = self.events[-1] if self.events else "(nothing yet)"
+        buffer.text(x + 2, y + 6, f"last: {last}", parse_style(f"bold {PURPLE}"))
 
-        row = y + 6
+        row = y + 8
         if not app.joysticks:
             buffer.text(
                 x + 2, row, "no pad seen -- a keyboard is all there is",
