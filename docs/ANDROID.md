@@ -28,7 +28,66 @@ Two things that are **not** downloaded, and why:
   and this machine's is 3.14. So the toolchain goes in a separate venv
   (`.venv-android`) and never touches the development one.
 
-## The steps, as they actually ran
+## What was downloaded, and how it was checked
+
+### The toolchain (every file verified)
+
+Each was fetched over HTTPS, then hashed locally and compared against the
+publisher's own published value.
+
+| file | source | size | hash | publisher's value | |
+| --- | --- | --- | --- | --- | --- |
+| `jdk17.tar.gz` | [Adoptium Temurin 17.0.20.1](https://api.adoptium.net/v3/binary/latest/17/ga/linux/x64/jdk/hotspot/normal/eclipse) | 193 MB | sha256 `3808d1d1…e08e` | `.sha256.txt`: `3808d1d1…e08e` | ✅ |
+| `python312.tar.gz` | [python-build-standalone 3.12.15](https://github.com/astral-sh/python-build-standalone/releases/download/20261009/) | 67 MB | sha256 `5864001b…af63` | `SHA256SUMS`: `5864001b…af63` | ✅ |
+| `ndk-r25b.zip` | [dl.google.com/android/repository](https://dl.google.com/android/repository/android-ndk-r25b-linux.zip) | 531 MB | sha1 `e27dcb9c…59eb` | `repository2-3.xml`: `e27dcb9c…59eb` | ✅ |
+| `cmdline-tools.zip` | [commandlinetools-linux-15859902](https://dl.google.com/android/repository/commandlinetools-linux-15859902_latest.zip) | 182 MB | sha1 `040d3996…4af4` | `repository2-3.xml`: `040d3996…4af4` | ✅ |
+
+Google publishes only SHA-1 for SDK/NDK; Adoptium and Astral publish SHA-256.
+The local sums are kept in `~/android-toolchain/downloads/SHA256SUMS.txt`.
+
+**One correction worth recording:** the first comparison reported mismatches for
+the NDK and the command-line tools. That was the *checker's* bug -- it searched
+forward from the URL in Google's XML, while the checksum sits *before* the URL.
+Searching backward gave the matches above. Reported honestly rather than left as
+a false alarm.
+
+### The host build tools (verified by apt)
+
+The only things that needed root: `openjdk-17-jdk`, `cmake`, `autoconf`,
+`automake`, `libtool`, `pkg-config`, `m4`, and the `-dev` headers. These come
+from Ubuntu's repositories, whose packages apt verifies against their GPG
+signatures -- a different chain of trust than a direct download, and the one
+that was used.
+
+### Downloaded *during* the build (not all checksummed)
+
+`buildozer` and `python-for-android` come from PyPI. p4a then fetches and
+compiles these source archives itself:
+
+| what | version | from |
+| --- | --- | --- |
+| CPython (host and target) | 3.14.2 | github.com/python/cpython |
+| SDL2 | 2.30.11 | github.com/libsdl-org/SDL |
+| SDL2_image / _mixer / _ttf | 2.8.2 / 2.6.3 / 2.22.0 | github.com/libsdl-org |
+| libpng / libjpeg-turbo | 1.6.37 / 2.0.1 | github.com/glennrp, github.com/libjpeg-turbo |
+| openssl | 3.3.1 | openssl.org |
+| sqlite / libffi | 3.50.4 / 3.4.2 | github.com |
+| pygame-ce | 2.5.8 | github.com/pygame-community/pygame-ce |
+| Cython | 3.1.3 | PyPI (installed into the host Python) |
+
+Honest note: of p4a's recipes only **SDL2** pins a checksum (`md5sum`); the rest
+are fetched over HTTPS with no pinned hash. That is p4a's design, not a choice
+made here, and it is the weakest link in the chain above. The two things this
+repo controls -- the pygame-ce and Cython versions -- are pinned in
+`p4a-recipes/`.
+
+### The attempt that downloaded nothing
+
+`micromamba` was started as a way to get the build tools without root. It was
+interrupted before any bytes arrived (`~/android-toolchain/bin/` is empty), and
+the apt route was taken instead. Nothing partial is on disk.
+
+
 
 The toolchain lives in `~/android-toolchain`, none of it needs root, and
 `~/android-toolchain/env.sh` puts it on the path. The commands below are the
