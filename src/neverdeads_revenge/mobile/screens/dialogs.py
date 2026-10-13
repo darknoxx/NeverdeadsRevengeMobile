@@ -95,7 +95,7 @@ class ConfirmScreen(_Dialog):
     def key(self, name, event, app) -> bool:
         if event.isAutoRepeat():
             return True
-        if name == "y":
+        if name in ("y", "enter"):
             self.finish(app, True)
         elif name in ("n", "escape"):
             self.finish(app, False)

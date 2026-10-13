@@ -22,6 +22,7 @@ Three things are the handheld's own:
 
 from __future__ import annotations
 
+import os
 import random
 import time
 
@@ -48,7 +49,7 @@ from .audio import Sfx, loudest_kind, sound_for_kind
 from .buffer import PatternBuffer
 from .effects import Effects, Shake
 from .font import BitmapFont
-from .input import KeyEvent, button_name, key_name, stick_direction
+from .input import KeyEvent, button_name, key_name
 from .render import draw_game, regions, screen_point
 from .screens.game import GameScreen
 from .screens.title import TitleScreen
@@ -100,9 +101,22 @@ _APP_DIDENTERFOREGROUND = getattr(pygame, "APP_DIDENTERFOREGROUND", -1)
 _APP_TERMINATING = getattr(pygame, "APP_TERMINATING", -1)
 
 
-def GRID_FOR(font: BitmapFont) -> tuple[int, int]:
-    """The grid the font's metrics allow on the device's screen."""
-    return SCREEN[0] // font.cell_w, SCREEN[1] // font.cell_h
+def _on_android() -> bool:
+    """Whether this is running inside a python-for-android package.
+
+    p4a sets ``ANDROID_ARGUMENT`` (and ``ANDROID_PRIVATE``) before the app
+    starts, and a desktop sets neither -- so this is the honest test for "there
+    is a handheld under me", and it is what turns on fullscreen.
+    """
+    return any(
+        name in os.environ
+        for name in ("ANDROID_ARGUMENT", "ANDROID_PRIVATE", "ANDROID_APP_PATH")
+    )
+
+
+def GRID_FOR(font: BitmapFont, size: tuple[int, int] = SCREEN) -> tuple[int, int]:
+    """The grid the font's metrics allow on a screen of ``size``."""
+    return size[0] // font.cell_w, size[1] // font.cell_h
 
 
 class MobileApp:
@@ -125,20 +139,34 @@ class MobileApp:
         self.headless = headless
         self.pixel_size = ZOOMS[zoom]
         self.font = BitmapFont(self.pixel_size)
-        self.cols, self.rows = GRID_FOR(self.font)
+        self.scale = scale
+        self.screen = None
+        if headless:
+            # No window at all: screenshots are taken at the device's size.
+            self.surface_size = SCREEN
+        elif _on_android():
+            # A handheld is always fullscreen, and the *real* surface is
+            # whatever the panel and the system bars leave. Asking SDL for the
+            # screen rather than assuming 1240x1080 is what keeps the bottom of
+            # the frame from being cut off.
+            self.screen = pygame.display.set_mode((0, 0), pygame.FULLSCREEN)
+            size = self.screen.get_size()
+            # A driver that answers (0,0) with (0,0) must not make a zero grid.
+            self.surface_size = size if min(size) > 100 else SCREEN
+        else:
+            requested = (
+                max(1, int(SCREEN[0] * scale)),
+                max(1, int(SCREEN[1] * scale)),
+            )
+            self.screen = pygame.display.set_mode(requested)
+            self.surface_size = requested
+        self.window_size = self.surface_size
+        self.cols, self.rows = GRID_FOR(self.font, self.surface_size)
         self._buffer = PatternBuffer(self.cols, self.rows, self.font)
         self.frame = (self.cols * self.font.cell_w, self.rows * self.font.cell_h)
-        self.scale = scale
-        self.window_size = (
-            max(1, int(SCREEN[0] * scale)),
-            max(1, int(SCREEN[1] * scale)),
-        )
-        self.screen = None
-        if not headless:
-            self.screen = pygame.display.set_mode(self.window_size)
         self.offset = (
-            (SCREEN[0] - self.frame[0]) // 2,
-            (SCREEN[1] - self.frame[1]) // 2,
+            (self.surface_size[0] - self.frame[0]) // 2,
+            (self.surface_size[1] - self.frame[1]) // 2,
         )
 
         # -- the game's own state --------------------------------------------
@@ -237,7 +265,7 @@ class MobileApp:
         # cannot disagree about where a sparkle lands.
         frame = self._buffer.render()
         self.effects.draw(frame)
-        image = pygame.Surface(SCREEN)
+        image = pygame.Surface(self.surface_size)
         image.fill((0, 0, 0))
         image.blit(frame, self.offset)
         pygame.image.save(image, path)
@@ -545,22 +573,23 @@ class MobileApp:
         return True
 
     def _direction_now(self) -> str | None:
-        """Where the player is pushing, from the pad first and the keys after.
+        """Where the player is pushing: the d-pad first, then the keys.
 
-        The stick is read for what it is -- a direction with a deadzone -- and
-        the d-pad is read as a hat, because a d-pad *is* a hat: eight positions
-        and no in-between.
+        The d-pad is read as a hat, because a d-pad *is* a hat: eight positions
+        and no in-between, which is exactly the instrument a grid wants. The
+        analog stick is deliberately **not** read for movement -- it drifts, it
+        has no rest that is truly still, and the handheld this is for asked for
+        the d-pad. (The bench, ``--sniff``, still shows the stick raw.)
         """
         for stick in self.joysticks:
-            direction = stick_direction(stick)
-            if direction is not None:
-                return direction
             if stick.get_numhats():
                 x, y = stick.get_hat(0)
                 if (x, y) != (0, 0):
                     return {
-                        (0, 1): "down", (0, -1): "up", (-1, 0): "left", (1, 0): "right",
-                        (-1, 1): "sw", (1, 1): "se", (-1, -1): "nw", (1, -1): "ne",
+                        (0, 1): "down", (0, -1): "up",
+                        (-1, 0): "left", (1, 0): "right",
+                        (-1, 1): "sw", (1, 1): "se",
+                        (-1, -1): "nw", (1, -1): "ne",
                     }.get((x, y))
         pressed = pygame.key.get_pressed()
         for key, name in (

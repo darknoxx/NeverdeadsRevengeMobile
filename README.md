@@ -67,13 +67,15 @@ Screenshots of the same moment at all three, from `--screenshot`:
 ## The pad
 
 The gamepad is the only input the device has, and the keyboard stands in for it
-on a laptop. Directions are **polled** (a stick has a position, a D-pad a hat,
-and an arrow key is read the same way); everything else -- buttons, letters, a
-menu's shortcuts -- arrives as an event, one press one action. Holding a
-direction walks at the hero's own pace, after a repeat delay so a tap is one
-square. `--sniff` opens a bench that shows every axis, button and hat raw,
-beside the name the game gives it: that is where a mapping is checked against a
-real pad.
+on a laptop. Movement is the **D-pad** (and the arrow keys): a D-pad is a hat --
+eight positions and no in-between -- which is what a grid wants. The analog
+stick is deliberately *not* read for movement; it drifts and has no true rest.
+Directions are **polled** (a hat has a position, not a stream of presses);
+everything else -- buttons, letters, a menu's shortcuts -- arrives as an event,
+one press one action. Holding a direction walks at the hero's own pace, after a
+repeat delay so a tap is one square. `--sniff` opens a bench that shows every
+axis, button and hat raw, beside the name the game gives it: that is where a
+mapping is checked against a real pad.
 
 ## On Android
 

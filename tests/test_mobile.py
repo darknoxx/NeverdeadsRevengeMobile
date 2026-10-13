@@ -386,6 +386,53 @@ def test_the_sniff_bench_shows_every_raw_event(app):
     assert app._quit is True
 
 
+def test_the_dpad_walks_and_the_stick_does_not(app):
+    """The handheld asked for the d-pad and not the stick: the d-pad is a hat,
+    which is what a grid wants, and the stick drifts and has no true rest."""
+
+    class Pad:
+        hat = (0, 0)
+        axis = 0.95  # a stick pushed to the stop
+
+        def get_numhats(self):
+            return 1
+
+        def get_hat(self, hat):
+            return self.hat
+
+        def get_axis(self, axis):
+            return self.axis
+
+    pad = Pad()
+    app.joysticks = [pad]
+
+    # The stick is at the stop and the d-pad rests: nothing moves.
+    assert app._direction_now() is None, "the stick still steers"
+
+    pad.hat = (-1, 0)
+    assert app._direction_now() == "left", "the d-pad does not steer"
+
+    pad.hat = (1, -1)
+    assert app._direction_now() == "ne", "the d-pad's diagonal is wrong"
+
+
+def test_the_confirm_dialog_answers_a_and_b(app):
+    """A is enter and B is escape, and the dialog used to answer only y/n -- so
+    A did nothing and only B (escape) worked, which is what the handheld saw."""
+    from neverdeads_revenge.mobile.screens.dialogs import ConfirmScreen
+
+    for name, expected in (
+        ("enter", True),
+        ("escape", False),
+        ("y", True),
+        ("n", False),
+    ):
+        answers: list = []
+        app.screens = [ConfirmScreen("QUIT?", "body", on_done=answers.append)]
+        app.handle(key_event(name, text=name if len(name) == 1 else ""))
+        assert answers == [expected], f"{name} answered {answers}"
+
+
 def test_the_screens_have_what_they_ask_the_app_for(app):
     """The audit that found ``app.view``: every attribute the screens read."""
     for name in (

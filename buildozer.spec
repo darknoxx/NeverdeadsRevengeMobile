@@ -31,6 +31,9 @@ p4a.bootstrap = sdl2
 
 # The device is 1240x1080 -- wider than tall, so landscape -- and the game draws
 # its own frame centred inside whatever it is given, so fullscreen is right.
+# (p4a appends `.Fullscreen` to the app theme itself when fullscreen is on, so
+# the default Theme.NoTitleBar becomes Theme.NoTitleBar.Fullscreen -- setting it
+# by hand here would double the suffix and aapt would reject it.)
 orientation = landscape
 fullscreen = 1
 
