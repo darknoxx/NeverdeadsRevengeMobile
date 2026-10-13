@@ -26,8 +26,20 @@ Phase 0: the fork exists, the engine is in, the engine tests run.
 ```sh
 python3 -m venv .venv
 ./.venv/bin/pip install -e '.[dev]'
-./.venv/bin/python -m neverdeads_revenge --zoom M
+./.venv/bin/python -m neverdeads_revenge --scale 0.5 --zoom M
 ```
+
+The flags:
+
+| flag | what it does |
+| --- | --- |
+| `--zoom S\|M\|L` | how much dungeon against how big the letters |
+| `--scale X` | the window at X times the device's size (0.5 on a laptop, 1.0 on the handheld) |
+| `--hero noxx\|yeti\|walkyrion` | who goes down |
+| `--seed N` | the same dungeon every time |
+| `--testrun` | the chronicle unlocked, the purse full, and the ultimates answering from level 1 |
+| `--no-sound` | start silent |
+| `--screenshot DIR` | draw one frame per zoom into DIR and exit (no window, works over ssh) |
 
 `--zoom` takes `S`, `M` or `L`. The grid follows from the font's own metrics
 (a cell is about six tenths as wide as it is tall), so the three zooms land as:

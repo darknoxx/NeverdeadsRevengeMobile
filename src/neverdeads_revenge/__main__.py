@@ -40,12 +40,27 @@ def main(argv: list[str] | None = None) -> int:
         help="show the window at X times the device's size (dev on a laptop: 0.5)",
     )
     parser.add_argument(
+        "--no-sound",
+        action="store_true",
+        help="start with the sound off, whatever the save file says",
+    )
+    parser.add_argument(
+        "--testrun",
+        action="store_true",
+        help="unlock the chronicle, fill the purse, and let the ultimates answer from level 1",
+    )
+    parser.add_argument(
         "--screenshot",
         metavar="DIR",
         default=None,
         help="draw one frame per zoom into DIR and exit (no window needed)",
     )
     args = parser.parse_args(argv)
+
+    if args.testrun:
+        from .persistence import grant_test_save
+
+        grant_test_save()
 
     if args.screenshot:
         # Headless: SDL's dummy driver, so this works over SSH and in CI.
@@ -56,7 +71,13 @@ def main(argv: list[str] | None = None) -> int:
 
         os.makedirs(args.screenshot, exist_ok=True)
         for zoom in ("S", "M", "L"):
-            app = MobileApp(zoom=zoom, seed=args.seed, hero=args.hero, headless=True)
+            app = MobileApp(
+                zoom=zoom,
+                seed=args.seed,
+                hero=args.hero,
+                headless=True,
+                testrun=args.testrun,
+            )
             stage_a_moment(app)
             app.screenshot(f"{args.screenshot.rstrip('/')}/zoom_{zoom}.png")
             print(
@@ -68,7 +89,12 @@ def main(argv: list[str] | None = None) -> int:
     from .mobile.app import MobileApp
 
     app = MobileApp(
-        zoom=args.zoom, seed=args.seed, hero=args.hero, scale=args.scale
+        zoom=args.zoom,
+        seed=args.seed,
+        hero=args.hero,
+        scale=args.scale,
+        no_sound=args.no_sound,
+        testrun=args.testrun,
     )
     app.redraw()
     app.loop()
