@@ -286,6 +286,44 @@ def test_every_menu_opens_from_a_run(app):
         app.redraw()
 
 
+def test_a_tap_on_the_premise_banks_nothing(app):
+    """The hold's own rule, which the synthesized repeats must not break: a
+    brief press that never repeated is a tap, and taps cannot add up. Feeding a
+    repeat on the press frame broke exactly this -- "hold A feels strange"."""
+    app.handle(key_event("n", text="n"))
+    app.handle(pad_event(0, down=True))   # A takes the hero, opening the premise
+    app.handle(pad_event(0, down=False))
+    assert top(app) == "PrologueScreen"
+    screen = app.screens[-1]
+
+    for _ in range(3):
+        app.handle(pad_event(0, down=True))
+        deadline = time.monotonic() + 0.10  # shorter than any repeat delay
+        while time.monotonic() < deadline:
+            time.sleep(0.01)
+            app.poll_holds(time.monotonic())
+        app.handle(pad_event(0, down=False))
+        app.poll_holds(time.monotonic())
+
+    assert top(app) == "PrologueScreen", "taps walked through the premise"
+    assert screen.hold.progress == 0.0, "a tap banked a fill"
+
+
+def test_a_held_button_ends_the_premise(app):
+    app.handle(key_event("n", text="n"))
+    app.handle(pad_event(0, down=True))
+    assert top(app) == "PrologueScreen"
+
+    deadline = time.monotonic() + 2.5
+    while top(app) == "PrologueScreen" and time.monotonic() < deadline:
+        time.sleep(0.016)
+        app.poll_holds(time.monotonic())
+    app.handle(pad_event(0, down=False))
+
+    assert top(app) == "GameScreen", "a held A did not end the premise"
+    assert app.run is not None
+
+
 def test_the_screens_have_what_they_ask_the_app_for(app):
     """The audit that found ``app.view``: every attribute the screens read."""
     for name in (

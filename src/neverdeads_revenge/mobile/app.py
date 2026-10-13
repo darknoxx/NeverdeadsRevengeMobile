@@ -80,6 +80,18 @@ _REPEAT_DELAY = 0.30
 #: the stick crossed the deadzone, the player did not press twice.
 _RELEASE_GRACE = 0.10
 
+#: How long a held button waits before the app starts feeding it repeats, in
+#: seconds. A keyboard's auto-repeat delay, and it is what keeps a tap a tap:
+#: shorter than this and the hold's own tap rule (a brief press that never
+#: repeated banks nothing) would never see an unrepeated press. Above
+#: ``hold.TAP_SECONDS`` with room to spare, so the two cannot disagree.
+_HOLD_REPEAT_DELAY = 0.30
+
+#: How often the synthetic repeat stream ticks once it has started, in seconds.
+#: The fill is wall-clock time, so this only sets how smoothly the bar moves and
+#: how finely completion is timed; twenty a second is smoother than an eye.
+_HOLD_REPEAT_RATE = 0.05
+
 
 def GRID_FOR(font: BitmapFont) -> tuple[int, int]:
     """The grid the font's metrics allow on the device's screen."""
@@ -164,6 +176,9 @@ class MobileApp:
         #: :meth:`poll_holds`).
         self._buttons_down: set[int] = set()
         self._last_hold_repeat = 0.0
+        #: When the current hold's key went down, so the repeat stream can wait
+        #: before it starts -- see :meth:`poll_holds`.
+        self._hold_down_at: float | None = None
 
     # -- the stack -----------------------------------------------------------
     def push(self, screen) -> None:
@@ -496,16 +511,33 @@ class MobileApp:
 
         It is the same shape as the stick's polling, and for the same reason: a
         held button has a *state*, and the game wants a stream.
+
+        And like a keyboard's auto-repeat it *waits* before it repeats. That is
+        not politeness, it is the hold's own rule: a press that is down briefly
+        and never repeats is a tap, and a tap banks nothing. Feeding a repeat on
+        the very first frame made every press a repeated one, so a tap could
+        bank a fill and two of them could add up to a hold nobody held -- which
+        is exactly what "hold A feels strange" was.
         """
         if not self.screens:
             return
         hold = getattr(self.screens[-1], "hold", None)
         if hold is None or not hold.keys:
+            self._hold_down_at = None
             return
         key = hold.keys[0]
         if not self._hold_key_down(key):
+            # The key is up: the next down is a new hold, and the repeat
+            # clock starts with it rather than carrying the last one's.
+            self._hold_down_at = None
             return
-        if now - self._last_hold_repeat < 0.05:
+        if self._hold_down_at is None:
+            self._hold_down_at = now
+            self._last_hold_repeat = now
+            return
+        if now - self._hold_down_at < _HOLD_REPEAT_DELAY:
+            return
+        if now - self._last_hold_repeat < _HOLD_REPEAT_RATE:
             return
         self._last_hold_repeat = now
         self.key_down(key, repeat=True)
