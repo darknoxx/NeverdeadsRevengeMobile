@@ -110,15 +110,21 @@ The gamepad is the only input the device has, and the keyboard stands in for it
 on a laptop. Movement is the **D-pad** (and the arrow keys): a D-pad is a hat --
 eight positions and no in-between -- which is what a grid wants. The analog
 stick is deliberately *not* read for movement; it drifts and has no true rest.
-The **borrowed hour** and the **wait** are on the shoulder buttons, L1 and R1:
-the analog triggers were tried first, but on this pad their two axes are coupled
-(pulling one drives the other to the opposite end) and their values jump, so
-they are not read at all. The legend and the sheet live in the pause menu, where
-nothing has to be spent on them. Directions are **polled**; everything else --
-buttons, letters, a menu's shortcuts -- arrives as an event, one press one
-action. Holding a direction walks at the hero's own pace, after a repeat delay so
-a tap is one square. `--sniff` opens a bench that shows every axis, button and
-hat raw, beside the name the game gives it: that is where a mapping is checked
+The **borrowed hour** and the **wait** are on the shoulders, L1 and R1; the
+**ultimate** is the left stick click, the **sheet** the right one, the legend and
+this page on L2 and R2, and Start pauses. Directions are **polled**; everything
+else -- buttons, letters, a menu's shortcuts -- arrives as an event, one press
+one action.
+
+One thing to know if the mapping is ever touched again: on Android the button
+**numbers are not the PC ones**. SDL maps each Android keycode to an
+`SDL_CONTROLLER_BUTTON_*` index (`keycode_to_SDL` in SDL's
+`src/joystick/android/SDL_sysjoystick.c`), and *that index* is what pygame
+reports -- so the shoulders are 9 and 10, the stick clicks 7 and 8, Start 6 and
+Select 4. Assuming the PC layout quietly put "escape" on L1 and nothing at all on
+R1. Holding a direction walks at the hero's own pace, after a repeat delay so a
+tap is one square. `--sniff` opens a bench that shows every axis, button and hat
+raw, beside the name the game gives it: that is where a mapping is checked
 against a real pad.
 
 ## On Android

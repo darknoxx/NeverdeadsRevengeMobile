@@ -83,19 +83,26 @@ KEYS: dict[int, str] = {
 if hasattr(pygame, "K_AC_BACK"):
     KEYS[pygame.K_AC_BACK] = "escape"
 
-#: The pad's face and shoulder buttons, by SDL's own numbering. A is the bottom
-#: button on an Xbox-layout pad, which is what a Retroid ships as.
+#: The pad's buttons, by the numbers SDL gives them on **Android**. These are not
+#: the PC numbering: SDL's Android joystick maps each Android keycode to an
+#: ``SDL_CONTROLLER_BUTTON_*`` index (see ``keycode_to_SDL`` in SDL's
+#: ``src/joystick/android/SDL_sysjoystick.c``), and those indices are what
+#: pygame reports. A/B/X/Y are 0-3 as anywhere, but the shoulders are 9 and 10,
+#: the stick clicks 7 and 8, Start 6 and Select 4. Assuming the PC layout here
+#: (L1 4, R1 5, L2 6, R2 7) had quietly put "escape" on L1 and nothing on R1.
 BUTTONS: dict[int, str] = {
     0: "enter",   # A -- the game's one verb: take, open, speak, descend
     1: "escape",  # B -- back, and the pause menu
     2: "q",       # X -- drink
     3: "i",       # Y -- the pack
-    4: "r",       # L1 -- the borrowed hour
-    5: "space",   # R1 -- wait
-    6: "c",       # L2 -- the sheet
-    7: "f",       # R2 -- the ultimate
-    9: "escape",  # Start -- the pause
-    8: "select",  # Select -- the status menu
+    4: "select",  # Select (Android's BACK)
+    6: "escape",  # Start -- the pause
+    7: "f",       # L3 -- the ultimate
+    8: "c",       # R3 -- the sheet
+    9: "r",       # L1 -- the borrowed hour
+    10: "space",  # R1 -- wait
+    15: "l",      # L2 -- the legend
+    16: "?",      # R2 -- this page
 }
 
 #: Stick axes, as ``(axis, sign)`` per direction.

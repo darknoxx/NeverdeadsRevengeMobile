@@ -286,13 +286,18 @@ def test_an_effect_frame_does_not_re_render_the_glyphs(app):
 
 
 def test_the_shoulders_are_the_hour_and_the_wait(app):
-    """The triggers were too unreliable to read on the handheld -- their two
-    axes are coupled and the values jump -- so the borrowed hour and the wait
-    live on the shoulder buttons, which are buttons and always have been."""
+    """On Android, SDL numbers the shoulders 9 and 10, not 4 and 5: it maps each
+    Android keycode to an SDL controller-button index, and that index is what
+    pygame reports. The PC layout had put "escape" on L1 and nothing on R1."""
     from neverdeads_revenge.mobile.input import button_name
 
-    assert button_name(4) == "r", "L1 is not the borrowed hour"
-    assert button_name(5) == "space", "R1 is not the wait"
+    assert button_name(9) == "r", "L1 is not the borrowed hour"
+    assert button_name(10) == "space", "R1 is not the wait"
+    # And the rest of the Android numbering, since it is not the PC one.
+    assert button_name(7) == "f", "L3 is not the ultimate"
+    assert button_name(8) == "c", "R3 is not the sheet"
+    assert button_name(6) == "escape", "Start is not the pause"
+    assert button_name(4) == "select", "Select moved"
 
 
 def test_the_loop_body_survives_a_real_sequence(app, monkeypatch):
