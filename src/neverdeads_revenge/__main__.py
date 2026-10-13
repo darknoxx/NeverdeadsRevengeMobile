@@ -50,6 +50,11 @@ def main(argv: list[str] | None = None) -> int:
         help="unlock the chronicle, fill the purse, and let the ultimates answer from level 1",
     )
     parser.add_argument(
+        "--sniff",
+        action="store_true",
+        help="start on the pad bench: every axis, button and hat, raw (B leaves)",
+    )
+    parser.add_argument(
         "--screenshot",
         metavar="DIR",
         default=None,
@@ -113,6 +118,10 @@ def main(argv: list[str] | None = None) -> int:
         no_sound=args.no_sound,
         testrun=args.testrun,
     )
+    if args.sniff:
+        from .mobile.screens.sniff import SniffScreen
+
+        app.screens = [SniffScreen()]
     app.redraw()
     app.loop()
     return 0

@@ -92,6 +92,13 @@ _HOLD_REPEAT_DELAY = 0.30
 #: how finely completion is timed; twenty a second is smoother than an eye.
 _HOLD_REPEAT_RATE = 0.05
 
+#: Android's lifecycle events. pygame names them and a desktop never sends one;
+#: guarded so a pygame without them cannot break the import. -1 is not an event
+#: type SDL ever uses, so the comparisons stay false on a desktop.
+_APP_WILLENTERBACKGROUND = getattr(pygame, "APP_WILLENTERBACKGROUND", -1)
+_APP_DIDENTERFOREGROUND = getattr(pygame, "APP_DIDENTERFOREGROUND", -1)
+_APP_TERMINATING = getattr(pygame, "APP_TERMINATING", -1)
+
 
 def GRID_FOR(font: BitmapFont) -> tuple[int, int]:
     """The grid the font's metrics allow on the device's screen."""
@@ -179,6 +186,9 @@ class MobileApp:
         #: When the current hold's key went down, so the repeat stream can wait
         #: before it starts -- see :meth:`poll_holds`.
         self._hold_down_at: float | None = None
+        #: The Android wake lock, if this build could take one. See
+        #: :meth:`_acquire_wakelock`.
+        self._wakelock = None
 
     # -- the stack -----------------------------------------------------------
     def push(self, screen) -> None:
@@ -429,9 +439,84 @@ class MobileApp:
         if self.screens and self.screens[-1].key_up(name, event, self):
             self._dirty = True
 
+    # -- the platform's own weather ------------------------------------------
+    def _suspend(self) -> None:
+        """The app is leaving the foreground: write the run down and sleep.
+
+        Android can take the process away without another word, and a run is
+        forty kilobytes of map. It goes into the same file "save and quit"
+        writes, so ``continue_run`` picks it up exactly as it would after a
+        deliberate exit.
+        """
+        if self.run is not None:
+            try:
+                save_run(dump(self.run))
+            except OSError:
+                pass
+        self._release_wakelock()
+
+    def _resume(self) -> None:
+        """Back in front: keep the panel lit, and repaint what was underneath."""
+        self._acquire_wakelock()
+        self._dirty = True
+
+    def _acquire_wakelock(self) -> None:
+        """Keep the panel lit while the game is in front, on Android.
+
+        A handheld that dims mid-fight has lost the fight for you, and SDL has
+        no call for this, so it goes through the platform's own power manager.
+        On a desktop there is no ``jnius`` and nothing to keep awake, and this
+        is quietly nothing -- which is why it is allowed to fail.
+        """
+        if self._wakelock is not None:
+            return
+        try:
+            from jnius import autoclass
+
+            activity = autoclass("org.kivy.android.PythonActivity").mActivity
+            context = autoclass("android.content.Context")
+            power = autoclass("android.os.PowerManager")
+            service = activity.getSystemService(context.POWER_SERVICE)
+            lock = service.newWakeLock(
+                power.SCREEN_BRIGHT_WAKE_LOCK, "neverdeads_revenge"
+            )
+            lock.acquire()
+            self._wakelock = lock
+        except Exception:
+            self._wakelock = None
+
+    def _release_wakelock(self) -> None:
+        lock, self._wakelock = self._wakelock, None
+        if lock is None:
+            return
+        try:
+            lock.release()
+        except Exception:
+            pass
+
     def handle(self, event) -> bool:
         """Handle one pygame event. Returns ``False`` to leave the loop."""
+        if self.screens:
+            # The bench (``--sniff``) wants every event raw, before a mapping
+            # has read it; no other screen defines this, so this is a no-op
+            # everywhere else.
+            note = getattr(self.screens[-1], "note", None)
+            if note is not None:
+                note(event, self)
         if event.type == pygame.QUIT:
+            return False
+        if event.type == _APP_WILLENTERBACKGROUND:
+            # Android is about to put us in the background, and it may take the
+            # process away without another word. A run is forty kilobytes of
+            # map; it gets written down now, into the same file "save and quit"
+            # writes, so continuing works.
+            self._suspend()
+            return True
+        if event.type == _APP_DIDENTERFOREGROUND:
+            self._resume()
+            return True
+        if event.type == _APP_TERMINATING:
+            self._suspend()
             return False
         if event.type == pygame.KEYDOWN:
             name = key_name(event)
@@ -609,6 +694,7 @@ class MobileApp:
     def loop(self) -> None:
         clock = pygame.time.Clock()
         running = True
+        self._acquire_wakelock()
         while running and not self._quit:
             dt = clock.tick(60) / 1000.0
             now = time.monotonic()
@@ -620,4 +706,5 @@ class MobileApp:
             self.tick(dt)
             if self._dirty:
                 self.redraw()
+        self._release_wakelock()
         pygame.quit()

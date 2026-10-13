@@ -160,19 +160,39 @@ class MetaProgress:
 # -- storage ---------------------------------------------------------------
 
 
+def _android_dir() -> Path | None:
+    """Where a run lives on Android, or ``None`` on a desktop.
+
+    python-for-android hands the app its own private directory in
+    ``ANDROID_PRIVATE``. On Android there is no ``$HOME`` to fall back to and
+    nothing outside the app's own sandbox is ours to write to, so this is tried
+    before any desktop rule -- and a desktop, which never sets the variable, is
+    untouched by it.
+    """
+    private = os.environ.get("ANDROID_PRIVATE")
+    if private:
+        return Path(private).expanduser()
+    return None
+
+
 def data_dir() -> Path:
     """Return the directory the save file belongs in.
 
-    Honours ``XDG_DATA_HOME`` and falls back to the platform default, so the
-    source tree never collects save data.
+    The order is: an explicit override (the tests, and the screenshot mode), then
+    Android's own sandbox, then ``XDG_DATA_HOME``, then the platform default --
+    so the source tree never collects save data.
     """
     override = os.environ.get("NEVERDEADS_REVENGE_HOME")
     if override:
         return Path(override).expanduser()
 
+    android = _android_dir()
+    if android is not None:
+        return android
+
     base = os.environ.get("XDG_DATA_HOME")
     root = Path(base).expanduser() if base else Path.home() / ".local" / "share"
-    return root / "neverdeads_revenge2"
+    return root / "neverdeads_revenge_mobile"
 
 
 def save_path() -> Path:

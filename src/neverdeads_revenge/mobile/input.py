@@ -75,6 +75,13 @@ KEYS: dict[int, str] = {
     pygame.K_QUESTION: "?",
 }
 
+#: Android's back gesture, the one key a handheld has that a keyboard does not.
+#: Everywhere here "back" means escape, so it is spelled that way and no screen
+#: had to learn a second word for it. Guarded because a pygame without Android
+#: support does not define it.
+if hasattr(pygame, "K_AC_BACK"):
+    KEYS[pygame.K_AC_BACK] = "escape"
+
 #: The pad's face and shoulder buttons, by SDL's own numbering. A is the bottom
 #: button on an Xbox-layout pad, which is what a Retroid ships as.
 BUTTONS: dict[int, str] = {

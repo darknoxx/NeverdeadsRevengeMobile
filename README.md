@@ -19,7 +19,17 @@ layout for a nearly square screen, and a **gamepad** instead of a keyboard.
 
 ## Status
 
-Phase 0: the fork exists, the engine is in, the engine tests run.
+The engine is in and green, the whole presentation is ported, and all twenty
+screens have been walked headless. What remains is the Android build itself:
+the APK, and whatever the real pad says once it is running on the device.
+
+| phase | what | state |
+| --- | --- | --- |
+| 0 | the fork, the engine, the engine tests | done (1336 tests) |
+| 1 | theme, font, buffer, render, the three-band layout | done |
+| 2 | the pad: mapping, polling, the raw bench (`--sniff`) | done, awaiting a device |
+| 3 | Android plumbing: save paths, back button, wake lock, pause/resume | done |
+| 4 | the APK: toolchain, build, sideload | next |
 
 ## Running it (development, on a desktop)
 
@@ -39,6 +49,7 @@ The flags:
 | `--seed N` | the same dungeon every time |
 | `--testrun` | the chronicle unlocked, the purse full, and the ultimates answering from level 1 |
 | `--no-sound` | start silent |
+| `--sniff` | start on the pad bench: every axis, button and hat, raw (B leaves) |
 | `--screenshot DIR` | draw one frame per zoom into DIR and exit (no window, works over ssh) |
 
 `--zoom` takes `S`, `M` or `L`. The grid follows from the font's own metrics
@@ -52,6 +63,25 @@ The flags:
 
 Screenshots of the same moment at all three, from `--screenshot`:
 `docs/zoom_s.png`, `docs/zoom_m.png`, `docs/zoom_l.png`.
+
+## The pad
+
+The gamepad is the only input the device has, and the keyboard stands in for it
+on a laptop. Directions are **polled** (a stick has a position, a D-pad a hat,
+and an arrow key is read the same way); everything else -- buttons, letters, a
+menu's shortcuts -- arrives as an event, one press one action. Holding a
+direction walks at the hero's own pace, after a repeat delay so a tap is one
+square. `--sniff` opens a bench that shows every axis, button and hat raw,
+beside the name the game gives it: that is where a mapping is checked against a
+real pad.
+
+## On Android
+
+- Saves go to the app's own sandbox (`ANDROID_PRIVATE`); there is no `$HOME`.
+- The back gesture is escape, everywhere.
+- Leaving the foreground writes the run down, because Android can take the
+  process away without another word.
+- A wake lock keeps the panel lit while the game is in front.
 
 ## Licence
 

@@ -324,6 +324,68 @@ def test_a_held_button_ends_the_premise(app):
     assert app.run is not None
 
 
+# -- the platform --------------------------------------------------------------
+def test_android_gets_its_own_sandbox(tmp_path, monkeypatch):
+    """On Android there is no ``$HOME`` to fall back to; python-for-android
+    hands the app ``ANDROID_PRIVATE``, and the save belongs inside it."""
+    from neverdeads_revenge import persistence
+
+    monkeypatch.delenv("NEVERDEADS_REVENGE_HOME", raising=False)
+    monkeypatch.setenv("ANDROID_PRIVATE", str(tmp_path / "private"))
+    assert persistence.data_dir() == tmp_path / "private"
+
+
+def test_the_back_button_means_escape(app):
+    """Android's back gesture is a key a keyboard does not have. Everywhere here
+    back means escape, so no screen had to learn a second word for it."""
+    start_a_run(app)
+    app.handle(
+        pygame.event.Event(pygame.KEYDOWN, key=pygame.K_AC_BACK, unicode="", mod=0)
+    )
+    assert top(app) == "PauseScreen"
+
+
+def test_leaving_the_foreground_writes_the_run_down(app):
+    """Android can take the process away without another word, so the run is
+    written the moment the app goes to the background -- into the same file
+    ``save and quit`` writes, so continuing works."""
+    from neverdeads_revenge.persistence import load_run
+
+    start_a_run(app)
+    assert load_run() is None
+
+    app.handle(pygame.event.Event(pygame.APP_WILLENTERBACKGROUND))
+    assert load_run() is not None, "the background took the run with it"
+
+    app.handle(pygame.event.Event(pygame.APP_DIDENTERFOREGROUND))  # and back
+
+
+def test_the_sniff_bench_shows_every_raw_event(app):
+    """The bench is how a mapping gets checked against a real pad, so it must
+    see every event -- including the axes and hats no screen maps."""
+    from neverdeads_revenge.mobile.screens.sniff import SniffScreen
+
+    bench = SniffScreen()
+    app.screens = [bench]
+    for event in (
+        pygame.event.Event(pygame.JOYAXISMOTION, axis=1, value=-0.88),
+        pygame.event.Event(pygame.JOYHATMOTION, hat=0, value=(0, -1)),
+        pygame.event.Event(pygame.JOYBUTTONDOWN, button=7),
+        key_event("n", text="n"),
+    ):
+        app.handle(event)
+    app.redraw()
+
+    joined = "\n".join(bench.events)
+    assert "AXIS" in joined and "-0.88" in joined
+    assert "HAT" in joined and "(0, -1)" in joined
+    assert "BUTTON DOWN" in joined and "-> f" in joined
+    assert "KEY DOWN" in joined
+
+    app.handle(key_event("escape"))  # B / escape leaves the bench
+    assert app._quit is True
+
+
 def test_the_screens_have_what_they_ask_the_app_for(app):
     """The audit that found ``app.view``: every attribute the screens read."""
     for name in (
