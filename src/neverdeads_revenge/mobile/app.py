@@ -64,6 +64,12 @@ ZOOMS: dict[str, int] = {"S": 20, "M": 27, "L": 36}
 #: black: at these zooms the leftover is 0 to 24 pixels, which is a bezel.
 SCREEN = (1240, 1080)
 
+#: The directions the *poll* owns: a stick has a position and a d-pad a hat, so
+#: neither sends a press the event loop could count -- and an arrow key is read
+#: the same way for the same reason. Everything else (buttons, letters, the
+#: shortcuts the menus answer) arrives as an event, one press one action.
+POLLED_DIRECTIONS = frozenset({"up", "down", "left", "right"})
+
 
 def GRID_FOR(font: BitmapFont) -> tuple[int, int]:
     """The grid the font's metrics allow on the device's screen."""
@@ -376,13 +382,17 @@ class MobileApp:
             return False
         if event.type == pygame.KEYDOWN:
             name = key_name(event)
-            if name is not None:
+            if name is not None and name not in POLLED_DIRECTIONS:
+                # Directions are the poll's business, and only the poll's: if
+                # both counted a held arrow the cursor would move twice per
+                # press -- once from this event and once from the held key --
+                # which is a menu that skips an item now and then.
                 self.key_down(name, text=event.unicode or "")
             if event.key == pygame.K_ESCAPE and event.mod & pygame.KMOD_CTRL:
                 return False
         elif event.type == pygame.KEYUP:
             name = key_name(event)
-            if name is not None:
+            if name is not None and name not in POLLED_DIRECTIONS:
                 self.key_up(name)
         elif event.type == pygame.JOYBUTTONDOWN:
             name = button_name(event.button)
