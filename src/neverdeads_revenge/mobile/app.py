@@ -72,11 +72,13 @@ MAP_ZOOM = 2
 #: left, and they are *positions*, so they are polled like a stick.
 TRIGGER_KEYS = {4: "r", 5: " "}
 
-#: How far a trigger must move from its resting value to count as pressed. The
-#: resting value is learned from the first reading, because a trigger rests at
-#: -1 on some pads and 0 on others, and guessing would either fire at rest or
-#: never fire at all.
-TRIGGER_THRESHOLD = 0.5
+#: How far a trigger must rise above its resting value to count as pressed, and
+#: how far it must fall back before it counts as let go. The gap is hysteresis:
+#: an analog trigger's axis is noisy, and a single threshold would chatter --
+#: firing and releasing several times during one pull, which reads as a stick
+#: that moves by itself.
+TRIGGER_PRESS = 0.6
+TRIGGER_RELEASE = 0.3
 
 #: The device's screen. The frame is centred inside it and the remainder is
 #: black: at these zooms the leftover is 0 to 24 pixels, which is a bezel.
@@ -394,6 +396,19 @@ class MobileApp:
     def fps(self) -> float:
         """The smoothed frame rate, for the bench."""
         return self._fps
+
+    def trigger_state(self) -> str:
+        """What the game makes of the triggers, for the bench."""
+        names = {4: "L2", 5: "R2"}
+        parts = []
+        for axis in TRIGGER_KEYS:
+            rest = self._trigger_rest.get((0, axis))
+            down = any((i, axis) in self._trigger_down for i in range(len(self.joysticks)))
+            text = f"{names.get(axis, axis)} {'PULLED' if down else 'rest'}"
+            if rest is not None:
+                text += f" (rest {rest:+.2f})"
+            parts.append(text)
+        return "   ".join(parts)
 
     def _draw_fps_readout(self) -> None:
         """The live numbers, straight onto the screen and not into the buffer.
@@ -828,11 +843,14 @@ class MobileApp:
         """Read the analog triggers, which are positions and not buttons.
 
         SDL keeps L2 and R2 on axes, and a resting trigger is not the same value
-        on every pad -- -1 on some, 0 on others -- so the resting value is
-        learned from the first reading and a trigger counts as pressed once it
-        has moved far enough from it. This is how the handheld's two free
-        controls get the borrowed hour and the wait: every other control was
-        taken, and these were the ones with nothing on them.
+        on every pad -- -1 on some, 0 on others -- so the resting value is the
+        *lowest* the axis has ever read: a trigger rests at one end and is
+        pulled toward the other, and this learns which end that is without
+        assuming. Press and release are two different thresholds (hysteresis),
+        because an analog axis is noisy and one threshold would chatter.
+
+        This is how the handheld's two free controls get the borrowed hour and
+        the wait: every other control was taken, and these had nothing on them.
         """
         for index, pad in enumerate(self.joysticks):
             axes = pad.get_numaxes()
@@ -842,16 +860,14 @@ class MobileApp:
                 value = pad.get_axis(axis)
                 slot = (index, axis)
                 rest = self._trigger_rest.get(slot)
-                if rest is None:
-                    # The first reading is the rest: assume nobody is holding a
-                    # trigger down at the moment the game starts.
-                    self._trigger_rest[slot] = value
-                    continue
-                pressed = abs(value - rest) >= TRIGGER_THRESHOLD
-                if pressed and slot not in self._trigger_down:
+                if rest is None or value < rest:
+                    rest = self._trigger_rest[slot] = value
+                pulled = value - rest
+                down = slot in self._trigger_down
+                if not down and pulled >= TRIGGER_PRESS:
                     self._trigger_down.add(slot)
                     self.key_down(key, text=key if key.isprintable() else "")
-                elif not pressed and slot in self._trigger_down:
+                elif down and pulled <= TRIGGER_RELEASE:
                     self._trigger_down.discard(slot)
                     self.key_up(key)
 
