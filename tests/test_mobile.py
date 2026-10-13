@@ -69,6 +69,19 @@ def top(app) -> str:
     return type(app.screens[-1]).__name__
 
 
+def start_a_run(app, seed: int = 3):
+    """A live run on the app, without walking the prologue for it."""
+    from neverdeads_revenge.game.actors import HEROES
+    from neverdeads_revenge.game.state import start_run
+
+    from neverdeads_revenge.mobile.screens.game import GameScreen
+
+    app.run = start_run(HEROES["noxx"], seed)
+    app.screens = [GameScreen(app.run)]
+    app.redraw()
+    return app.run
+
+
 def hold(app, button: int = 0, seconds: float = 1.4) -> None:
     """Hold a pad button the way a thumb does: down, then frames."""
     app.handle(pad_event(button, down=True))
@@ -130,6 +143,67 @@ def test_a_held_direction_walks_and_a_tap_steps_once(app):
     assert state.player.steps == once, "a direction moved twice in one press"
     app.poll_held(now + 0.5)  # the pace has passed
     assert state.player.steps > once, "a held direction did not walk"
+
+
+def test_a_long_tap_is_still_one_step(app):
+    """The overshoot the handheld reported: a press that lingered a moment
+    moved twice, because the repeat began on the very next frame. A tap now
+    moves once and then waits out the repeat delay, like a keyboard's."""
+    run = start_a_run(app)
+    app._direction_now = lambda: "right"
+
+    now = time.monotonic()
+    app.poll_held(now)
+    once = run.player.steps
+    for step in (0.05, 0.10, 0.20, 0.25):
+        app.poll_held(now + step)
+        assert run.player.steps == once, f"a tap moved again after {step}s"
+    app.poll_held(now + 0.40)  # the delay is spent: now it is a walk
+    assert run.player.steps > once
+
+
+def test_a_stick_flicker_is_one_hold(app):
+    """A stick that crosses the deadzone for a frame is not a second press."""
+    run = start_a_run(app)
+    held = {"dir": "right"}
+    app._direction_now = lambda: held["dir"]
+
+    now = time.monotonic()
+    app.poll_held(now)
+    once = run.player.steps
+
+    held["dir"] = None           # the wobble at the edge of the deadzone
+    app.poll_held(now + 0.02)
+    held["dir"] = "right"        # and back, still one hold
+    app.poll_held(now + 0.04)
+    assert run.player.steps == once, "the flicker added a step"
+
+    # A real release, longer than the grace, is a fresh press.
+    held["dir"] = None
+    app.poll_held(now + 0.30)
+    held["dir"] = "right"
+    app.poll_held(now + 0.50)
+    assert run.player.steps == once + 1, "a real re-press did not move"
+
+
+def test_an_effect_lands_on_the_square_it_belongs_to(app):
+    """The gold sparkle was drawn a whole band too high: screen_point left out
+    the map's own origin, so every particle landed in the HUD."""
+    from neverdeads_revenge.mobile.render import regions, viewport
+
+    run = start_a_run(app)
+    position = run.player.position
+    point = app.screen_point(position)
+    assert point is not None
+
+    x0, y0, map_w, map_h = regions(app._buffer.cols, app._buffer.rows)["map"]
+    left, top, _, _ = viewport(run, map_w, map_h)
+    assert point == (
+        (x0 + position[0] - left + 0.5) * app.font.cell_w,
+        (y0 + position[1] - top + 0.5) * app.font.cell_h,
+    )
+    # And it is inside the map band, not the HUD above it.
+    assert y0 * app.font.cell_h <= point[1] < (y0 + map_h) * app.font.cell_h
 
 
 def test_the_loop_body_survives_a_real_sequence(app, monkeypatch):

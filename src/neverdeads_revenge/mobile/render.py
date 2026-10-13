@@ -137,12 +137,15 @@ def screen_point(
     translation, and everything that skipped it drew in the wrong place.
     """
     areas = regions(cols, rows)
-    map_w, map_h = areas["map"][2], areas["map"][3]
+    x0, y0, map_w, map_h = areas["map"]
     left, top, view_w, view_h = viewport(state, map_w, map_h)
     x, y = position
     if not (left <= x < left + view_w and top <= y < top + view_h):
         return None
-    return ((x - left + 0.5) * cell_w, (y - top + 0.5) * cell_h)
+    # The map is the *middle* band, so a square's pixel is its cell inside
+    # that band and not inside the frame. Skipping the band's own origin put
+    # every sparkle in the HUD, a whole band above the thing it celebrated.
+    return ((x0 + x - left + 0.5) * cell_w, (y0 + y - top + 0.5) * cell_h)
 
 
 # -- the whole screen ---------------------------------------------------------
