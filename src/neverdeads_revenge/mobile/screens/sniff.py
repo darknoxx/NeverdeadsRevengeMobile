@@ -12,7 +12,7 @@ from __future__ import annotations
 import pygame
 
 from ..chrome import ASH, BLOOD, BONE, PURPLE, box
-from ..input import button_name, describe_pad, stick_direction
+from ..input import button_name, describe_pad, dpad_direction, stick_direction
 from ..theme import parse_style
 from .base import Screen
 
@@ -64,6 +64,11 @@ class SniffScreen(Screen):
             row += 1
         for stick in app.joysticks:
             buffer.text(x + 2, row, describe_pad(stick), parse_style(f"bold {BONE}"))
+            row += 1
+            direction = dpad_direction(stick)
+            buffer.text(
+                x + 2, row, f"dpad  -> {direction or 'rest'}", parse_style(f"bold {BONE}")
+            )
             row += 1
             direction = stick_direction(stick)
             buffer.text(

@@ -386,13 +386,15 @@ def test_the_sniff_bench_shows_every_raw_event(app):
     assert app._quit is True
 
 
-def test_the_dpad_walks_and_the_stick_does_not(app):
-    """The handheld asked for the d-pad and not the stick: the d-pad is a hat,
-    which is what a grid wants, and the stick drifts and has no true rest."""
+def test_the_dpad_steers_however_the_pad_reports_it(app):
+    """A d-pad is usually a hat, but not always: the pad on the bench reported
+    it as buttons 11-14, and only the hat was read -- so the face buttons worked
+    and the d-pad did nothing. Both are read now, with the stick behind them."""
 
     class Pad:
         hat = (0, 0)
-        axis = 0.95  # a stick pushed to the stop
+        buttons: set = set()
+        axis = (0.0, 0.0)
 
         def get_numhats(self):
             return 1
@@ -400,20 +402,42 @@ def test_the_dpad_walks_and_the_stick_does_not(app):
         def get_hat(self, hat):
             return self.hat
 
+        def get_numbuttons(self):
+            return 16
+
+        def get_button(self, button):
+            return button in self.buttons
+
         def get_axis(self, axis):
-            return self.axis
+            return self.axis[axis]
 
     pad = Pad()
     app.joysticks = [pad]
 
-    # The stick is at the stop and the d-pad rests: nothing moves.
-    assert app._direction_now() is None, "the stick still steers"
+    assert app._direction_now() is None, "a resting pad moved the hero"
 
     pad.hat = (-1, 0)
-    assert app._direction_now() == "left", "the d-pad does not steer"
+    assert app._direction_now() == "left", "the d-pad as a hat does not steer"
 
-    pad.hat = (1, -1)
-    assert app._direction_now() == "ne", "the d-pad's diagonal is wrong"
+    pad.hat = (0, 0)
+    pad.buttons = {11, 14}  # up + right, SDL's d-pad buttons
+    assert app._direction_now() == "ne", "the d-pad as buttons does not steer"
+
+    pad.buttons = set()
+    pad.axis = (0.9, 0.0)  # the stick, read only behind the d-pad
+    assert app._direction_now() == "right", "the stick fallback does not steer"
+
+
+def test_the_pause_menu_opens_the_pad_bench(app):
+    """The bench has to be reachable on the device: an installed app gets no
+    command line, and the bench is where a pad is seen as it really is."""
+    from neverdeads_revenge.mobile.screens.sniff import SniffScreen
+
+    start_a_run(app)
+    app.handle(key_event("escape"))
+    assert top(app) == "PauseScreen"
+    app.handle(key_event("p"))
+    assert isinstance(app.screens[-1], SniffScreen)
 
 
 def test_the_confirm_dialog_answers_a_and_b(app):

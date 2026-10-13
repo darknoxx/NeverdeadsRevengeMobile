@@ -49,7 +49,7 @@ from .audio import Sfx, loudest_kind, sound_for_kind
 from .buffer import PatternBuffer
 from .effects import Effects, Shake
 from .font import BitmapFont
-from .input import KeyEvent, button_name, key_name
+from .input import KeyEvent, button_name, dpad_direction, key_name, stick_direction
 from .render import draw_game, regions, screen_point
 from .screens.game import GameScreen
 from .screens.title import TitleScreen
@@ -573,24 +573,22 @@ class MobileApp:
         return True
 
     def _direction_now(self) -> str | None:
-        """Where the player is pushing: the d-pad first, then the keys.
+        """Where the player is pushing: the d-pad first, the stick after, keys last.
 
-        The d-pad is read as a hat, because a d-pad *is* a hat: eight positions
-        and no in-between, which is exactly the instrument a grid wants. The
-        analog stick is deliberately **not** read for movement -- it drifts, it
-        has no rest that is truly still, and the handheld this is for asked for
-        the d-pad. (The bench, ``--sniff``, still shows the stick raw.)
+        The d-pad is preferred because it is the instrument a grid wants -- eight
+        positions and no in-between -- and it is read as a hat *or* as the four
+        buttons SDL reserves for it, because not every pad reports a hat (the one
+        on the bench did not, which is why the d-pad did nothing). The stick is
+        still read, after the d-pad: it drifts, but it is a usable fallback and
+        on a pad without a d-pad it is the only thing there is.
         """
-        for stick in self.joysticks:
-            if stick.get_numhats():
-                x, y = stick.get_hat(0)
-                if (x, y) != (0, 0):
-                    return {
-                        (0, 1): "down", (0, -1): "up",
-                        (-1, 0): "left", (1, 0): "right",
-                        (-1, 1): "sw", (1, 1): "se",
-                        (-1, -1): "nw", (1, -1): "ne",
-                    }.get((x, y))
+        for pad in self.joysticks:
+            direction = dpad_direction(pad)
+            if direction is not None:
+                return direction
+            direction = stick_direction(pad)
+            if direction is not None:
+                return direction
         pressed = pygame.key.get_pressed()
         for key, name in (
             (pygame.K_UP, "up"), (pygame.K_DOWN, "down"),

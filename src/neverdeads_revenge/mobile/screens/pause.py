@@ -26,6 +26,7 @@ class PauseScreen(Screen):
         return [
             ("r", "RESUME"),
             ("c", "CONTROLS"),
+            ("p", "THE PAD"),
             ("s", "SAVE AND QUIT"),
             ("q", "QUIT TO TITLE"),
             ("m", f"SOUND: {'on' if not app.sfx.muted else 'off'}"),
@@ -57,7 +58,7 @@ class PauseScreen(Screen):
         if name in ("escape", "r"):
             app.pop()
             return True
-        if name in ("s", "q", "m", "c"):
+        if name in ("s", "q", "m", "c", "p"):
             self._choose(name, app)
             return True
         return True
@@ -70,6 +71,13 @@ class PauseScreen(Screen):
             from .menus import HelpScreen
 
             app.push(HelpScreen())
+        elif key == "p":
+            # The bench, reachable on the device: there is no command line to
+            # pass --sniff to once the app is installed, and the whole point of
+            # the bench is to see what the pad sends on the hardware itself.
+            from .sniff import SniffScreen
+
+            app.push(SniffScreen())
         elif key == "s":
             app.save_and_quit()
         elif key == "q":

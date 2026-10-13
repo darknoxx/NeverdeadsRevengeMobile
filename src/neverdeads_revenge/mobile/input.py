@@ -29,6 +29,7 @@ __all__ = [
     "DEADZONE",
     "key_name",
     "button_name",
+    "dpad_direction",
     "stick_direction",
     "describe_pad",
 ]
@@ -131,6 +132,40 @@ def key_name(event) -> str | None:
 def button_name(button: int) -> str | None:
     """The game's name for a gamepad button, or ``None``."""
     return BUTTONS.get(button)
+
+
+#: A d-pad's eight positions as a hat, shared by every reader of one.
+HAT_DIRECTIONS: dict[tuple[int, int], str] = {
+    (0, 1): "down", (0, -1): "up", (-1, 0): "left", (1, 0): "right",
+    (-1, 1): "sw", (1, 1): "se", (-1, -1): "nw", (1, -1): "ne",
+}
+
+#: The buttons SDL's controller layout reserves for a d-pad. A d-pad is usually
+#: a *hat*, but a pad that reports none -- or that hides its d-pad among the
+#: buttons -- puts it here, on 11 up / 12 down / 13 left / 14 right. The pad on
+#: the bench did exactly that: the face buttons worked and the d-pad did
+#: nothing, because only the hat was being read.
+DPAD_BUTTONS = {11: "up", 12: "down", 13: "left", 14: "right"}
+
+
+def dpad_direction(joystick) -> str | None:
+    """The direction a d-pad is being pushed, or ``None`` if it is resting.
+
+    Tried as a hat first (the usual way), then as the four buttons SDL reserves
+    for it. Diagonals fall out of reading both axes at once, exactly as they do
+    for a stick -- the game is eight-way and a d-pad that only ever produced
+    four would be half of itself.
+    """
+    if joystick.get_numhats():
+        x, y = joystick.get_hat(0)
+        if (x, y) != (0, 0):
+            return HAT_DIRECTIONS.get((x, y))
+    if joystick.get_numbuttons() > max(DPAD_BUTTONS):
+        x = int(joystick.get_button(14)) - int(joystick.get_button(13))  # right - left
+        y = int(joystick.get_button(12)) - int(joystick.get_button(11))  # down - up
+        if (x, y) != (0, 0):
+            return HAT_DIRECTIONS.get((x, y))
+    return None
 
 
 def stick_direction(joystick) -> str | None:
