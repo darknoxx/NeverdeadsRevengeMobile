@@ -285,40 +285,14 @@ def test_an_effect_frame_does_not_re_render_the_glyphs(app):
     assert app._glyph_frame is not cached, "an input did not re-render"
 
 
-def test_the_triggers_fire_on_the_axis_that_rises(app):
-    """The handheld's trigger axes are *coupled*: pulling one drives its own
-    axis to +1 and the other's to -1 in the same instant. So a trigger is the
-    axis that went *up*, not the axis that moved -- the latter fires both on
-    either pull, which is what "the triggers do nothing" really was."""
+def test_the_shoulders_are_the_hour_and_the_wait(app):
+    """The triggers were too unreliable to read on the handheld -- their two
+    axes are coupled and the values jump -- so the borrowed hour and the wait
+    live on the shoulder buttons, which are buttons and always have been."""
+    from neverdeads_revenge.mobile.input import button_name
 
-    class Pad:
-        axes = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]  # both triggers at rest
-
-        def get_numaxes(self):
-            return len(self.axes)
-
-        def get_axis(self, axis):
-            return self.axes[axis]
-
-    pad = Pad()
-    app.joysticks = [pad]
-    fired: list[str] = []
-    app.key_down = lambda name, **kw: fired.append(name)
-
-    app.poll_triggers()  # at rest: nothing
-    assert fired == [], "a resting trigger fired"
-
-    # L2 pulled: ax4 rises to +1, ax5 is dragged to -1 -- only L2 fires.
-    pad.axes[4], pad.axes[5] = 1.0, -1.0
-    app.poll_triggers()
-    assert fired == ["r"], "L2 did not fire the borrowed hour"
-
-    # Released, then R2: ax5 rises, ax4 is dragged down -- only R2 fires.
-    pad.axes[4], pad.axes[5] = 0.0, 0.0
-    app.poll_triggers()
-    pad.axes[4], pad.axes[5] = -1.0, 1.0
-    app.poll_triggers()
-    assert fired == ["r", " "], "R2 did not fire the wait"
+    assert button_name(4) == "r", "L1 is not the borrowed hour"
+    assert button_name(5) == "space", "R1 is not the wait"
 
 
 def test_the_loop_body_survives_a_real_sequence(app, monkeypatch):

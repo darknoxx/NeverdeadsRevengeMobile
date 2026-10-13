@@ -115,9 +115,6 @@ class SniffScreen(Screen):
                 parse_style(f"bold {BONE}"),
             )
             row += 1
-        if app.joysticks:
-            buffer.text(x + 2, row, app.trigger_state(), parse_style(f"bold {BONE}"))
-            row += 1
         row += 1
 
         buffer.text(x + 2, row, "LAST EVENTS", parse_style(f"bold {BONE}"))

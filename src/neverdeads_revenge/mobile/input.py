@@ -90,8 +90,8 @@ BUTTONS: dict[int, str] = {
     1: "escape",  # B -- back, and the pause menu
     2: "q",       # X -- drink
     3: "i",       # Y -- the pack
-    4: "l",       # L1 -- the legend
-    5: "?",       # R1 -- the reference
+    4: "r",       # L1 -- the borrowed hour
+    5: "space",   # R1 -- wait
     6: "c",       # L2 -- the sheet
     7: "f",       # R2 -- the ultimate
     9: "escape",  # Start -- the pause

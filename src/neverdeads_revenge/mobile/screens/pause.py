@@ -28,6 +28,7 @@ class PauseScreen(Screen):
             ("c", "CONTROLS"),
             ("p", "THE PAD"),
             ("t", "THE SHEET"),
+            ("g", "THE LEGEND"),
             ("z", f"MAP ZOOM: {app.map_zoom}x"),
             ("x", f"SCANLINES: {'on' if app.scanlines_on else 'off'}"),
             ("b", f"BLOOM: {'on' if app.bloom_on else 'off'}"),
@@ -63,7 +64,7 @@ class PauseScreen(Screen):
         if name in ("escape", "r"):
             app.pop()
             return True
-        if name in ("s", "q", "m", "c", "p", "t", "z", "x", "b", "f"):
+        if name in ("s", "q", "m", "c", "p", "t", "g", "z", "x", "b", "f"):
             self._choose(name, app)
             return True
         return True
@@ -91,6 +92,13 @@ class PauseScreen(Screen):
 
             if app.run is not None:
                 app.push(CharacterScreen(app.run))
+        elif key == "g":
+            # The legend, here because the shoulder buttons are the borrowed
+            # hour and the wait now.
+            from .menus import LegendScreen
+
+            if app.run is not None:
+                app.push(LegendScreen(app.run))
         elif key == "s":
             app.save_and_quit()
         elif key == "q":

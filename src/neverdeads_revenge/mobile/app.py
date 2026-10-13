@@ -67,21 +67,6 @@ ZOOMS: dict[str, int] = {"S": 20, "M": 27, "L": 36}
 #: into its band, so the thing the player is looking at is the thing that grows.
 MAP_ZOOM = 2
 
-#: The analog triggers, which SDL keeps on axes and not buttons: L2 is the
-#: borrowed hour, R2 is the wait. A pad's triggers were the two free controls
-#: left, and they are *positions*, so they are polled like a stick.
-TRIGGER_KEYS = {4: "r", 5: " "}
-
-#: A trigger counts as pressed when its own axis is near the top of its range,
-#: and let go when it falls back. Absolute, not relative to a learned rest: on
-#: the handheld the two axes are *coupled* -- pulling L2 drives ax4 to +1 and
-#: ax5 to -1 at the same time -- so "far from rest" would fire both triggers on
-#: either pull, and learning a rest from the lowest value seen made it worse
-#: (the -1 the other trigger wrote became the rest, and it fired forever). The
-#: axis that goes *up* is the trigger; the one that goes down is ignored.
-TRIGGER_PRESS = 0.5
-TRIGGER_RELEASE = 0.2
-
 #: The device's screen. The frame is centred inside it and the remainder is
 #: black: at these zooms the leftover is 0 to 24 pixels, which is a bezel.
 SCREEN = (1240, 1080)
@@ -269,8 +254,6 @@ class MobileApp:
         #: When the current hold's key went down, so the repeat stream can wait
         #: before it starts -- see :meth:`poll_holds`.
         self._hold_down_at: float | None = None
-        #: Which triggers are currently pulled. See :meth:`poll_triggers`.
-        self._trigger_down: set[tuple[int, int]] = set()
         #: The Android wake lock, if this build could take one. See
         #: :meth:`_acquire_wakelock`.
         self._wakelock = None
@@ -396,21 +379,6 @@ class MobileApp:
     def fps(self) -> float:
         """The smoothed frame rate, for the bench."""
         return self._fps
-
-    def trigger_state(self) -> str:
-        """What the game makes of the triggers, for the bench."""
-        names = {4: "L2", 5: "R2"}
-        parts = []
-        for axis in TRIGGER_KEYS:
-            value = None
-            if self.joysticks and self.joysticks[0].get_numaxes() > axis:
-                value = self.joysticks[0].get_axis(axis)
-            down = any((i, axis) in self._trigger_down for i in range(len(self.joysticks)))
-            text = f"{names.get(axis, axis)} {'PULLED' if down else 'rest'}"
-            if value is not None:
-                text += f" {value:+.2f}"
-            parts.append(text)
-        return "   ".join(parts)
 
     def _draw_fps_readout(self) -> None:
         """The live numbers, straight onto the screen and not into the buffer.
@@ -841,34 +809,6 @@ class MobileApp:
         self._last_hold_repeat = now
         self.key_down(key, repeat=True)
 
-    def poll_triggers(self) -> None:
-        """Read the analog triggers, which are positions and not buttons.
-
-        A trigger is pressed when its own axis is near the top of its range.
-        The handheld's two trigger axes are *coupled*: pulling one drives its
-        axis to +1 and the other's to -1 at the same instant, so the rule has to
-        be "this axis went up", not "this axis moved" -- the latter fires both
-        triggers on either pull, and a learned rest makes it worse, because the
-        -1 the other trigger wrote becomes the rest and then fires forever.
-
-        This is how the two free controls get the borrowed hour and the wait:
-        every other control was taken, and these had nothing on them.
-        """
-        for index, pad in enumerate(self.joysticks):
-            axes = pad.get_numaxes()
-            for axis, key in TRIGGER_KEYS.items():
-                if axis >= axes:
-                    continue
-                value = pad.get_axis(axis)
-                slot = (index, axis)
-                down = slot in self._trigger_down
-                if not down and value >= TRIGGER_PRESS:
-                    self._trigger_down.add(slot)
-                    self.key_down(key, text=key if key.isprintable() else "")
-                elif down and value <= TRIGGER_RELEASE:
-                    self._trigger_down.discard(slot)
-                    self.key_up(key)
-
     def poll_held(self, now: float) -> None:
         """A pushed direction walks, at the hero's own pace.
 
@@ -959,7 +899,6 @@ class MobileApp:
                     running = False
             self.poll_held(now)
             self.poll_holds(now)
-            self.poll_triggers()
             self.tick(dt)
             if self._dirty:
                 self.redraw()
