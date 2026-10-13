@@ -135,6 +135,11 @@ class MobileApp:
             stick.init()
         self._held_dir: str | None = None
         self._last_repeat = 0.0
+        #: Buttons currently down. SDL reports a press and a release and no
+        #: repeat between them -- which the holds in the game need (see
+        #: :meth:`poll_holds`).
+        self._buttons_down: set[int] = set()
+        self._last_hold_repeat = 0.0
 
     # -- the stack -----------------------------------------------------------
     def push(self, screen) -> None:
@@ -367,8 +372,14 @@ class MobileApp:
         if self.screens and self.screens[-1].key(name, event, self):
             self._dirty = True
 
-    def key_down(self, name: str, repeat: bool = False, text: str = "") -> None:
-        """Feed one press to the top screen, the way the other builds do."""
+    def key_down(self, name: str, *, repeat: bool = False, text: str = "") -> None:
+        """Feed one press to the top screen, the way the other builds do.
+
+        ``repeat`` and ``text`` are keyword-only on purpose: a call like
+        ``key_down("n", "n")`` -- which is how the desktop's test helper reads
+        -- would otherwise pass the text as the *repeat* flag, and the screen
+        would quietly ignore the key as a held one.
+        """
         self._route(name, KeyEvent(name, repeat, text))
 
     def key_up(self, name: str) -> None:
@@ -395,10 +406,12 @@ class MobileApp:
             if name is not None and name not in POLLED_DIRECTIONS:
                 self.key_up(name)
         elif event.type == pygame.JOYBUTTONDOWN:
+            self._buttons_down.add(event.button)
             name = button_name(event.button)
             if name is not None:
                 self.key_down(name)
         elif event.type == pygame.JOYBUTTONUP:
+            self._buttons_down.discard(event.button)
             name = button_name(event.button)
             if name is not None:
                 self.key_up(name)
@@ -430,6 +443,45 @@ class MobileApp:
             if pressed[key]:
                 return name
         return None
+
+    def _hold_key_down(self, key: str) -> bool:
+        """Whether the key a hold is waiting for is *still held*.
+
+        Two sources, because the handheld has two: the pad's A (button zero,
+        tracked from its down and up events) and, on a desktop, the return key.
+        """
+        if key in ("enter", "return"):
+            if 0 in self._buttons_down:
+                return True
+            pressed = pygame.key.get_pressed()
+            return bool(pressed[pygame.K_RETURN] or pressed[pygame.K_KP_ENTER])
+        return False
+
+    def poll_holds(self, now: float) -> None:
+        """Feed the holds the repeat stream a handheld never sends.
+
+        The prologue, the death tally and erasing the profile all advance on a
+        *stream* of presses: the fill is the time since the first one and the
+        screen closes on the press that crosses it. A keyboard repeats on its
+        own and a pad does not -- SDL reports a button going down and coming
+        up and nothing in between -- so on a handheld the stream has to be made
+        here, or "hold A to begin" fills nothing and the premise never ends.
+
+        It is the same shape as the stick's polling, and for the same reason: a
+        held button has a *state*, and the game wants a stream.
+        """
+        if not self.screens:
+            return
+        hold = getattr(self.screens[-1], "hold", None)
+        if hold is None or not hold.keys:
+            return
+        key = hold.keys[0]
+        if not self._hold_key_down(key):
+            return
+        if now - self._last_hold_repeat < 0.05:
+            return
+        self._last_hold_repeat = now
+        self.key_down(key, repeat=True)
 
     def poll_held(self, now: float) -> None:
         """A pushed direction walks, at the hero's own pace.
@@ -485,6 +537,7 @@ class MobileApp:
                 if not self.handle(event):
                     running = False
             self.poll_held(now)
+            self.poll_holds(now)
             self.tick(dt)
             if self._dirty:
                 self.redraw()
