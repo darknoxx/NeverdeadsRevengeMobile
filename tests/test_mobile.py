@@ -285,13 +285,14 @@ def test_an_effect_frame_does_not_re_render_the_glyphs(app):
     assert app._glyph_frame is not cached, "an input did not re-render"
 
 
-def test_the_triggers_are_learned_and_fire(app):
-    """The two free controls on the handheld are its analog triggers, which SDL
-    keeps on axes -- and a resting trigger is -1 on some pads and 0 on others,
-    so the rest is learned rather than assumed."""
+def test_the_triggers_fire_on_the_axis_that_rises(app):
+    """The handheld's trigger axes are *coupled*: pulling one drives its own
+    axis to +1 and the other's to -1 in the same instant. So a trigger is the
+    axis that went *up*, not the axis that moved -- the latter fires both on
+    either pull, which is what "the triggers do nothing" really was."""
 
     class Pad:
-        axes = [0.0, 0.0, 0.0, 0.0, -1.0, -1.0]  # both triggers rest at -1
+        axes = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]  # both triggers at rest
 
         def get_numaxes(self):
             return len(self.axes)
@@ -304,16 +305,18 @@ def test_the_triggers_are_learned_and_fire(app):
     fired: list[str] = []
     app.key_down = lambda name, **kw: fired.append(name)
 
-    app.poll_triggers()  # learns the rest
+    app.poll_triggers()  # at rest: nothing
     assert fired == [], "a resting trigger fired"
 
-    pad.axes[4] = 1.0  # L2, the borrowed hour
+    # L2 pulled: ax4 rises to +1, ax5 is dragged to -1 -- only L2 fires.
+    pad.axes[4], pad.axes[5] = 1.0, -1.0
     app.poll_triggers()
     assert fired == ["r"], "L2 did not fire the borrowed hour"
 
-    pad.axes[4] = -1.0  # released; R2 this time
+    # Released, then R2: ax5 rises, ax4 is dragged down -- only R2 fires.
+    pad.axes[4], pad.axes[5] = 0.0, 0.0
     app.poll_triggers()
-    pad.axes[5] = 1.0
+    pad.axes[4], pad.axes[5] = -1.0, 1.0
     app.poll_triggers()
     assert fired == ["r", " "], "R2 did not fire the wait"
 

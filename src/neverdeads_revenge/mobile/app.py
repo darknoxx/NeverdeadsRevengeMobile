@@ -72,13 +72,15 @@ MAP_ZOOM = 2
 #: left, and they are *positions*, so they are polled like a stick.
 TRIGGER_KEYS = {4: "r", 5: " "}
 
-#: How far a trigger must rise above its resting value to count as pressed, and
-#: how far it must fall back before it counts as let go. The gap is hysteresis:
-#: an analog trigger's axis is noisy, and a single threshold would chatter --
-#: firing and releasing several times during one pull, which reads as a stick
-#: that moves by itself.
-TRIGGER_PRESS = 0.6
-TRIGGER_RELEASE = 0.3
+#: A trigger counts as pressed when its own axis is near the top of its range,
+#: and let go when it falls back. Absolute, not relative to a learned rest: on
+#: the handheld the two axes are *coupled* -- pulling L2 drives ax4 to +1 and
+#: ax5 to -1 at the same time -- so "far from rest" would fire both triggers on
+#: either pull, and learning a rest from the lowest value seen made it worse
+#: (the -1 the other trigger wrote became the rest, and it fired forever). The
+#: axis that goes *up* is the trigger; the one that goes down is ignored.
+TRIGGER_PRESS = 0.5
+TRIGGER_RELEASE = 0.2
 
 #: The device's screen. The frame is centred inside it and the remainder is
 #: black: at these zooms the leftover is 0 to 24 pixels, which is a bezel.
@@ -267,9 +269,7 @@ class MobileApp:
         #: When the current hold's key went down, so the repeat stream can wait
         #: before it starts -- see :meth:`poll_holds`.
         self._hold_down_at: float | None = None
-        #: The resting value of each trigger axis, learned from the first
-        #: reading, and which ones are currently pulled.
-        self._trigger_rest: dict[tuple[int, int], float] = {}
+        #: Which triggers are currently pulled. See :meth:`poll_triggers`.
         self._trigger_down: set[tuple[int, int]] = set()
         #: The Android wake lock, if this build could take one. See
         #: :meth:`_acquire_wakelock`.
@@ -402,11 +402,13 @@ class MobileApp:
         names = {4: "L2", 5: "R2"}
         parts = []
         for axis in TRIGGER_KEYS:
-            rest = self._trigger_rest.get((0, axis))
+            value = None
+            if self.joysticks and self.joysticks[0].get_numaxes() > axis:
+                value = self.joysticks[0].get_axis(axis)
             down = any((i, axis) in self._trigger_down for i in range(len(self.joysticks)))
             text = f"{names.get(axis, axis)} {'PULLED' if down else 'rest'}"
-            if rest is not None:
-                text += f" (rest {rest:+.2f})"
+            if value is not None:
+                text += f" {value:+.2f}"
             parts.append(text)
         return "   ".join(parts)
 
@@ -842,15 +844,15 @@ class MobileApp:
     def poll_triggers(self) -> None:
         """Read the analog triggers, which are positions and not buttons.
 
-        SDL keeps L2 and R2 on axes, and a resting trigger is not the same value
-        on every pad -- -1 on some, 0 on others -- so the resting value is the
-        *lowest* the axis has ever read: a trigger rests at one end and is
-        pulled toward the other, and this learns which end that is without
-        assuming. Press and release are two different thresholds (hysteresis),
-        because an analog axis is noisy and one threshold would chatter.
+        A trigger is pressed when its own axis is near the top of its range.
+        The handheld's two trigger axes are *coupled*: pulling one drives its
+        axis to +1 and the other's to -1 at the same instant, so the rule has to
+        be "this axis went up", not "this axis moved" -- the latter fires both
+        triggers on either pull, and a learned rest makes it worse, because the
+        -1 the other trigger wrote becomes the rest and then fires forever.
 
-        This is how the handheld's two free controls get the borrowed hour and
-        the wait: every other control was taken, and these had nothing on them.
+        This is how the two free controls get the borrowed hour and the wait:
+        every other control was taken, and these had nothing on them.
         """
         for index, pad in enumerate(self.joysticks):
             axes = pad.get_numaxes()
@@ -859,15 +861,11 @@ class MobileApp:
                     continue
                 value = pad.get_axis(axis)
                 slot = (index, axis)
-                rest = self._trigger_rest.get(slot)
-                if rest is None or value < rest:
-                    rest = self._trigger_rest[slot] = value
-                pulled = value - rest
                 down = slot in self._trigger_down
-                if not down and pulled >= TRIGGER_PRESS:
+                if not down and value >= TRIGGER_PRESS:
                     self._trigger_down.add(slot)
                     self.key_down(key, text=key if key.isprintable() else "")
-                elif down and pulled <= TRIGGER_RELEASE:
+                elif down and value <= TRIGGER_RELEASE:
                     self._trigger_down.discard(slot)
                     self.key_up(key)
 
