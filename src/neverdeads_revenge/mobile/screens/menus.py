@@ -115,24 +115,24 @@ class HelpScreen(_Panel):
     """The controls and the terrain reference."""
 
     title = "CONTROLS & REFERENCE"
-    hint = "↑↓ scroll   esc closes"
+    hint = "D-PAD scroll   B closes"
 
     def lines(self, app) -> list[tuple[str, str]]:
         from neverdeads_revenge.game.prologue import terrain_help
 
         rows = [
-            ("MOVE      arrows / wasd / hjk / yubn (diagonals)", BONE),
-            ("WAIT      . or space", BONE),
-            ("TAKE      A  (loot, stairs, or speak)", BONE),
-            ("DRINK     q      PACK  i      SHEET  c", BONE),
-            ("LEGEND    l      REFERENCE  ?      HOUR  r", BONE),
-            ("ULTIMATE  f      (once a floor, from level 7)", BONE),
-            ("MENU      escape", BONE),
+            ("THE PAD", f"bold {PURPLE}"),
+            ("D-PAD    move -- tap a square, hold to walk", BONE),
+            ("A        take, open, speak, or descend", BONE),
+            ("B        back; in the dungeon, the pause menu", BONE),
+            ("X        drink        Y   the pack", BONE),
+            ("L1       legend       R1  this page", BONE),
+            ("L2       the sheet    R2  the ultimate", BONE),
+            ("START    pause", BONE),
             ("", ""),
-            ("THE GLASS", f"bold {PURPLE}"),
-            ("D-PAD / STICK  move      A  take      B  back", ASH),
-            ("X  drink   Y  pack   L1 legend   R1 reference   L2 sheet   R2 ultimate", ASH),
-            ("START  pause   SELECT  what is working", ASH),
+            ("A keyboard also drives it: it adds WAIT (space)", ASH),
+            ("and the borrowed hour (r), which the pad has no", ASH),
+            ("button for yet.", ASH),
             ("", ""),
             ("THE DUNGEON", f"bold {PURPLE}"),
         ]

@@ -47,6 +47,7 @@ __all__ = [
     "map_crop",
     "zoom_map",
     "screen_point",
+    "pulse_level",
     "draw_game",
     "hud_lines",
     "log_style",
@@ -87,6 +88,10 @@ ULTIMATE_PROMPTS: dict[str, tuple[str, tuple[int, int, int]]] = {
 _MAP_FLOOR = 18
 
 _BAR_CELLS = 14
+
+#: How long one step of the ultimate's breath lasts, in seconds. See
+#: :func:`pulse_level` for why the breath is stepped and not smooth.
+PULSE_SECONDS = 0.3
 #: How much of a worn item's name the HUD shows: the last word, clipped.
 _SHORT_NAME = 12
 _SLOT_GLYPH = {"weapon": WEAPON_GLYPH, "armour": ARMOUR_GLYPH, "amulet": AMULET_GLYPH}
@@ -382,6 +387,17 @@ def ultimate_ready(state: GameState) -> bool:
     )
 
 
+def pulse_level(now: float) -> float:
+    """The ultimate's breath, in *steps*: 0.0, 0.5 or 1.0.
+
+    Stepped rather than smooth on purpose. A smooth breath changed the HUD text
+    every frame, and every frame of change is a whole buffer re-rendered -- the
+    single most expensive thing this renderer does, spent on a shimmer. Three
+    steps a second still catches the eye and lets the frame be cached.
+    """
+    return (int(now / PULSE_SECONDS) % 3) / 2.0
+
+
 def ultimate_prompt(state: GameState, now: float) -> tuple[str, tuple[int, int, int]] | None:
     """The hero's promise, in the state it is in -- or ``None`` for a hero the
     dark has nothing for.
@@ -406,7 +422,7 @@ def ultimate_prompt(state: GameState, now: float) -> tuple[str, tuple[int, int, 
     if state.level < state.ultimate_level:
         return f"{name} (lvl {state.ultimate_level})", parse_style("grey30").fg
 
-    breathing = 0.35 + 0.95 * (0.5 + 0.5 * math.sin(now * 2.0 * math.pi / 1.0))
+    breathing = 0.35 + 0.95 * pulse_level(now)
     lit = tuple(max(0, min(255, int(round(channel * breathing)))) for channel in base)
     return f"{name} (f)", lit  # type: ignore[return-value]
 

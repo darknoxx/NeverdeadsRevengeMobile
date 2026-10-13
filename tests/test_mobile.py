@@ -237,15 +237,15 @@ def test_the_map_zooms_and_the_bars_do_not(app):
 
 
 def test_the_crt_effects_can_be_turned_off(app):
-    """The handheld asked for scanlines and bloom, and asked to be able to turn
-    them off again if they cost too much -- so both are switches, and both are
-    on by default."""
-    assert app.scanlines_on and app.bloom_on and app.map_zoom == 2
+    """The handheld asked for scanlines and bloom, then found them too dear --
+    so both are switches, and both are *off* by default."""
+    assert not app.scanlines_on and not app.bloom_on
+    assert app.map_zoom == 2  # the magnified playfield is the cheap one
 
     app.toggle_scanlines()
     app.toggle_bloom()
     app.toggle_map_zoom()
-    assert not app.scanlines_on and not app.bloom_on and app.map_zoom == 1
+    assert app.scanlines_on and app.bloom_on and app.map_zoom == 1
 
     app.toggle_map_zoom()
     assert app.map_zoom == 2
@@ -257,7 +257,32 @@ def test_the_crt_effects_can_be_turned_off(app):
     app.toggle_bloom()
     app.toggle_map_zoom()
     app.redraw()
-    assert app.frame_ms() >= 0.0
+    render_ms, post_ms, present_ms = app.timings()
+    assert render_ms >= 0.0 and post_ms >= 0.0 and present_ms >= 0.0
+
+
+def test_an_effect_frame_does_not_re_render_the_glyphs(app):
+    """The frame cache: a blood burst draws over the cached frame instead of
+    re-rendering two thousand cells -- which is what made the CRT feel dear."""
+    run = start_a_run(app)
+    app.redraw()
+    assert not app._buffer_dirty
+
+    # A particle appears, the app repaints, but the buffer did not change, so
+    # the glyph frame is the very same object and nothing was re-rendered.
+    point = app.screen_point(run.player.position)
+    app.effects.blood(point, count=4)
+    cached = app._glyph_frame
+    app.tick(0.016)
+    app.redraw()
+    assert app._glyph_frame is cached, "an effect frame re-rendered the glyphs"
+    render_ms, _, _ = app.timings()
+    assert render_ms < 1.0, "the cache was ignored"
+
+    # An input *does* change the buffer, and so re-renders.
+    app.key_down("space", text=" ")
+    app.redraw()
+    assert app._glyph_frame is not cached, "an input did not re-render"
 
 
 def test_the_loop_body_survives_a_real_sequence(app, monkeypatch):

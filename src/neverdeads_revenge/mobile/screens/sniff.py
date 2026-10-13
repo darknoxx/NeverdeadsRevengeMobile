@@ -54,16 +54,26 @@ class SniffScreen(Screen):
             x + 2, y + 2, "raw from SDL, beside the name the game gives it",
             parse_style(ASH),
         )
+        render_ms, post_ms, present_ms = app.timings()
+        render_pk, post_pk, present_pk = app.peaks()
         buffer.text(
             x + 2,
             y + 3,
-            f"redraw {app.frame_ms():.1f} ms   map {app.map_zoom}x   "
-            f"scanlines {'on' if app.scanlines_on else 'off'}   "
-            f"bloom {'on' if app.bloom_on else 'off'}",
+            f"{app.fps():4.0f}fps   render {render_ms:4.1f}/{render_pk:4.1f}   "
+            f"post {post_ms:4.1f}/{post_pk:4.1f}   "
+            f"present {present_ms:4.1f}/{present_pk:4.1f} ms",
             parse_style(f"bold {BONE}"),
         )
+        buffer.text(
+            x + 2,
+            y + 4,
+            f"map {app.map_zoom}x   scanlines {'on' if app.scanlines_on else 'off'}   "
+            f"bloom {'on' if app.bloom_on else 'off'}   "
+            f"(last/peak; live: pause -> SHOW FPS)",
+            parse_style(ASH),
+        )
 
-        row = y + 5
+        row = y + 6
         if not app.joysticks:
             buffer.text(
                 x + 2, row, "no pad seen -- a keyboard is all there is",

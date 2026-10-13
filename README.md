@@ -79,9 +79,18 @@ part that *is* visible and *is* affordable on a software renderer:
   player is looking at is the thing that grows. The window follows the hero, so
   he is never cropped out at the edge of a floor.
 
-All three are switches in the pause menu (`MAP ZOOM`, `SCANLINES`, `BLOOM`), and
-the pad bench shows the last redraw in milliseconds -- the honest number for
-whether the effects are affordable, measured on the device rather than guessed.
+All three are switches in the pause menu (`MAP ZOOM`, `SCANLINES`, `BLOOM`).
+Scanlines and bloom are **off by default** -- the handheld found them too dear
+for what they give -- and `SHOW FPS` puts a live readout in the corner of the
+screen (drawn straight onto the panel, not into the buffer, so measuring does
+not force the re-render it measures). The pad bench shows the last and worst
+`render` / `post` / `present` in milliseconds.
+
+The renderer caches the **glyph frame** and re-renders it only when the buffer
+itself changes. Effects and the shake draw over the cached frame, so a blood
+burst costs a copy and a few dots instead of two thousand cell blits -- and the
+ultimate's breath is *stepped*, not smooth, because a smooth one changed the HUD
+text every frame and so re-rendered the world sixty times a second.
 
 ## The pad
 

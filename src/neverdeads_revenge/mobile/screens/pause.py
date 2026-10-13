@@ -30,6 +30,7 @@ class PauseScreen(Screen):
             ("z", f"MAP ZOOM: {app.map_zoom}x"),
             ("x", f"SCANLINES: {'on' if app.scanlines_on else 'off'}"),
             ("b", f"BLOOM: {'on' if app.bloom_on else 'off'}"),
+            ("f", f"SHOW FPS: {'on' if app.show_fps else 'off'}"),
             ("s", "SAVE AND QUIT"),
             ("q", "QUIT TO TITLE"),
             ("m", f"SOUND: {'on' if not app.sfx.muted else 'off'}"),
@@ -61,7 +62,7 @@ class PauseScreen(Screen):
         if name in ("escape", "r"):
             app.pop()
             return True
-        if name in ("s", "q", "m", "c", "p", "z", "x", "b"):
+        if name in ("s", "q", "m", "c", "p", "z", "x", "b", "f"):
             self._choose(name, app)
             return True
         return True
@@ -94,3 +95,5 @@ class PauseScreen(Screen):
             app.toggle_scanlines()
         elif key == "b":
             app.toggle_bloom()
+        elif key == "f":
+            app.toggle_show_fps()

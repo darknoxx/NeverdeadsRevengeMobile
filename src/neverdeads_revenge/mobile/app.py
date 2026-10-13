@@ -51,7 +51,7 @@ from .effects import Effects, Shake
 from .font import BitmapFont
 from .input import KeyEvent, button_name, dpad_direction, key_name
 from .crt import bloom, scanline_overlay
-from .render import draw_game, regions, screen_point, zoom_map
+from .render import draw_game, pulse_level, regions, screen_point, zoom_map
 from .screens.game import GameScreen
 from .screens.title import TitleScreen
 
@@ -196,14 +196,40 @@ class MobileApp:
         self._quit = False
 
         # -- the CRT, what is left of it on a 420 ppi panel ----------------
+        # Both off by default: the handheld found them too dear for what they
+        # give, so they are opt-in switches in the pause menu, not defaults.
         self.map_zoom = MAP_ZOOM
-        self.scanlines_on = True
-        self.bloom_on = True
+        self.scanlines_on = False
+        self.bloom_on = False
         #: The scanline surface, built once per screen size and reused.
         self._scan_overlay = None
-        #: How long the last redraw took, in milliseconds -- the honest number
-        #: for "is the CRT cheap enough", shown on the bench.
-        self._redraw_ms = 0.0
+        #: The rendered glyph frame, rebuilt only when the *buffer* changes --
+        #: see :meth:`redraw`. Effects and the shake reuse it, so a blood burst
+        #: no longer re-renders two thousand cells a frame.
+        self._glyph_frame: pygame.Surface | None = None
+        #: Whether the buffer itself changed (input, a turn, a screen). Effects
+        #: and the shake set :attr:`_dirty` (repaint) but not this.
+        self._buffer_dirty = True
+        #: The last step of the ultimate's breath that was drawn, so a *new*
+        #: step is what asks for a re-render and the shimmer does not.
+        self._pulse_level = -1.0
+        #: The last redraw, split up: the honest numbers for "is the CRT
+        #: affordable", shown on the bench. ``render`` is the glyph frame,
+        #: ``post`` is bloom and scanlines, ``present`` is blit and flip.
+        self._render_ms = 0.0
+        self._post_ms = 0.0
+        self._present_ms = 0.0
+        #: The worst frame since startup. The last frame is whatever is being
+        #: drawn now (often the bench itself); the *peak* is what a turn in the
+        #: game actually cost, which is the number that matters.
+        self._render_peak = 0.0
+        self._post_peak = 0.0
+        self._present_peak = 0.0
+        self._fps = 0.0
+        #: A live readout, drawn straight onto the screen and *not* into the
+        #: buffer -- so measuring does not itself force the re-render it is
+        #: measuring. A switch, because it is a bench, not a HUD line.
+        self.show_fps = False
 
         # -- input ------------------------------------------------------------
         self.joysticks = [
@@ -238,18 +264,20 @@ class MobileApp:
     def push(self, screen) -> None:
         self.screens.append(screen)
         self._dirty = True
+        self._buffer_dirty = True
 
     def pop(self) -> None:
         if len(self.screens) > 1:
             self.screens.pop()
         self._dirty = True
+        self._buffer_dirty = True
 
     # -- the picture ---------------------------------------------------------
-    def _compose(self) -> pygame.Surface:
-        """Draw the stack into one frame, then dress it with the CRT.
+    def _compose_glyphs(self) -> pygame.Surface:
+        """Draw the stack into one frame of *glyphs*, map zoom included.
 
-        Shared by the window and the screenshot, so the two can never disagree
-        about where anything is -- which they did once, over the sparkles.
+        This is the expensive part -- two thousand blits -- so it is the part
+        that is cached: see :meth:`redraw`.
         """
         self._buffer.clear()
         # An opaque modal: nothing under it is drawn. A menu is a panel, not a
@@ -279,9 +307,6 @@ class MobileApp:
                 self.font.cell_h,
                 self.map_zoom,
             )
-        self.effects.draw(image)
-        if self.bloom_on:
-            bloom(image)
         return image
 
     def _scanlines(self) -> pygame.Surface:
@@ -292,9 +317,34 @@ class MobileApp:
         return self._scan_overlay
 
     def redraw(self) -> None:
+        """Draw the frame and put it on the screen.
+
+        The glyphs are re-rendered only when the *buffer* changed. Effects and
+        the shake reuse the cached frame, so a blood burst costs a copy and a
+        few dots instead of two thousand blits -- which is what made the CRT
+        feel unaffordable on the handheld.
+        """
         started = time.perf_counter()
-        image = self._compose()
+        if self._glyph_frame is None or self._buffer_dirty:
+            self._glyph_frame = self._compose_glyphs()
+            self._buffer_dirty = False
+        self._render_ms = (time.perf_counter() - started) * 1000.0
+
+        # Copy only when something is about to write on it.
+        if self.effects.active or self.bloom_on:
+            image = self._glyph_frame.copy()
+        else:
+            image = self._glyph_frame
+
+        post_started = time.perf_counter()
+        self.effects.draw(image)
+        if self.bloom_on:
+            bloom(image)
+        self._post_ms = (time.perf_counter() - post_started) * 1000.0
+
+        self._present_ms = 0.0
         if self.screen is not None:
+            present_started = time.perf_counter()
             dx, dy = self.shake.offset()
             self.screen.fill((0, 0, 0))
             if self.scale == 1.0:
@@ -304,16 +354,24 @@ class MobileApp:
                 self.screen.blit(scaled, (dx, dy))
             if self.scanlines_on:
                 self.screen.blit(self._scanlines(), (0, 0))
-        # Measured before the flip, which may wait on the panel: this is the
-        # work, which is the number that says whether the CRT is affordable.
-        self._redraw_ms = (time.perf_counter() - started) * 1000.0
-        if self.screen is not None:
+            if self.show_fps:
+                self._draw_fps_readout()
+            # Measured before the flip, which may wait on the panel: this is
+            # the work, which is the number that says whether the CRT is
+            # affordable.
+            self._present_ms = (time.perf_counter() - present_started) * 1000.0
             pygame.display.flip()
+        self._render_peak = max(self._render_peak, self._render_ms)
+        self._post_peak = max(self._post_peak, self._post_ms)
+        self._present_peak = max(self._present_peak, self._present_ms)
         self._dirty = False
 
     def screenshot(self, path: str) -> None:
         """Render one frame to a file, without a window."""
-        frame = self._compose()
+        frame = self._compose_glyphs()
+        self.effects.draw(frame)
+        if self.bloom_on:
+            bloom(frame)
         image = pygame.Surface(self.surface_size)
         image.fill((0, 0, 0))
         image.blit(frame, self.offset)
@@ -321,9 +379,31 @@ class MobileApp:
             image.blit(self._scanlines(), (0, 0))
         pygame.image.save(image, path)
 
-    def frame_ms(self) -> float:
-        """How long the last redraw took, in milliseconds -- for the bench."""
-        return self._redraw_ms
+    def timings(self) -> tuple[float, float, float]:
+        """``(render, post, present)`` for the last redraw, in milliseconds."""
+        return self._render_ms, self._post_ms, self._present_ms
+
+    def peaks(self) -> tuple[float, float, float]:
+        """``(render, post, present)`` for the worst redraw since startup."""
+        return self._render_peak, self._post_peak, self._present_peak
+
+    def fps(self) -> float:
+        """The smoothed frame rate, for the bench."""
+        return self._fps
+
+    def _draw_fps_readout(self) -> None:
+        """The live numbers, straight onto the screen and not into the buffer.
+
+        Drawing them into the buffer would change the buffer every frame, which
+        would force exactly the re-render the numbers exist to measure.
+        """
+        text = (
+            f"{self._fps:4.0f}fps  r{self._render_ms:3.0f} "
+            f"p{self._post_ms:3.0f} v{self._present_ms:3.0f}"
+        )
+        label = self.font.bold.render(text, False, (255, 230, 120))
+        self.screen.fill((0, 0, 0), (0, 0, label.get_width() + 4, label.get_height()))
+        self.screen.blit(label, (2, 0))
 
     # -- the CRT switches ----------------------------------------------------
     def toggle_scanlines(self) -> None:
@@ -337,6 +417,11 @@ class MobileApp:
     def toggle_map_zoom(self) -> None:
         """Cycle the playfield between life-size and magnified."""
         self.map_zoom = 1 if self.map_zoom > 1 else MAP_ZOOM
+        self._dirty = True
+        self._buffer_dirty = True
+
+    def toggle_show_fps(self) -> None:
+        self.show_fps = not self.show_fps
         self._dirty = True
 
     # -- the screens' app surface --------------------------------------------
@@ -407,6 +492,7 @@ class MobileApp:
         self.run = None
         self.effects.clear()
         self.screens = [TitleScreen()]
+        self._buffer_dirty = True
         self.redraw()
 
     def open_hero_select(self) -> None:
@@ -473,6 +559,7 @@ class MobileApp:
         self._seen_log = 0
         self.effects.clear()
         self.screens = [GameScreen(self.run)]
+        self._buffer_dirty = True
         self.redraw()
 
     def continue_run(self) -> None:
@@ -488,6 +575,7 @@ class MobileApp:
         self.run = state
         self._seen_log = len(state.log)
         self.screens = [GameScreen(state)]
+        self._buffer_dirty = True
         self.redraw()
 
     def save_and_quit(self) -> None:
@@ -521,6 +609,10 @@ class MobileApp:
     def _route(self, name: str, event) -> None:
         if self.screens and self.screens[-1].key(name, event, self):
             self._dirty = True
+            # A key can change what a screen draws, and only the screen knows
+            # whether it did -- so any key re-renders, which is one render per
+            # press and never per frame.
+            self._buffer_dirty = True
 
     def key_down(self, name: str, *, repeat: bool = False, text: str = "") -> None:
         """Feed one press to the top screen, the way the other builds do.
@@ -536,6 +628,7 @@ class MobileApp:
         event = KeyEvent(name)
         if self.screens and self.screens[-1].key_up(name, event, self):
             self._dirty = True
+            self._buffer_dirty = True
 
     # -- the platform's own weather ------------------------------------------
     def _suspend(self) -> None:
@@ -770,21 +863,32 @@ class MobileApp:
 
     # -- the loop ------------------------------------------------------------
     def tick(self, dt: float) -> None:
-        """Advance what moves between turns, and say whether to repaint."""
-        self.effects.step(dt)
-        if self.run is not None:
-            from .render import ultimate_ready
+        """Advance what moves between turns, and say whether to repaint.
 
-            holding = any(
-                getattr(screen, "hold", None) is not None and screen.hold.holding
-                for screen in self.screens
-            )
-            if (
-                self.effects.active
-                or self.shake.is_shaking()
-                or holding
-                or ultimate_ready(self.run)
-            ):
+        Effects and the shake ask only for a *repaint*: the frame they draw over
+        is cached, so a blood burst no longer re-renders the glyphs. The hold
+        bar and a new step of the ultimate's breath change the buffer itself, so
+        those ask for a re-render.
+        """
+        self.effects.step(dt)
+        if self.effects.active or self.shake.is_shaking():
+            self._dirty = True
+        if self.run is None:
+            return
+        from .render import ultimate_ready
+
+        holding = any(
+            getattr(screen, "hold", None) is not None and screen.hold.holding
+            for screen in self.screens
+        )
+        if holding:
+            self._buffer_dirty = True
+            self._dirty = True
+        if ultimate_ready(self.run):
+            level = pulse_level(time.monotonic())
+            if level != self._pulse_level:
+                self._pulse_level = level
+                self._buffer_dirty = True
                 self._dirty = True
 
     def loop(self) -> None:
@@ -793,6 +897,9 @@ class MobileApp:
         self._acquire_wakelock()
         while running and not self._quit:
             dt = clock.tick(60) / 1000.0
+            if dt > 0.0:
+                instant = 1.0 / dt
+                self._fps = instant if self._fps == 0.0 else self._fps * 0.9 + instant * 0.1
             now = time.monotonic()
             for event in pygame.event.get():
                 if not self.handle(event):
