@@ -57,6 +57,7 @@ class MobileApp:
         seed: int | None = None,
         hero: str = "noxx",
         headless: bool = False,
+        scale: float = 1.0,
     ) -> None:
         pygame.init()
         pygame.joystick.init()
@@ -70,9 +71,18 @@ class MobileApp:
             self.cols * self.font.cell_w,
             self.rows * self.font.cell_h,
         )
+        #: How much of the device's screen the *window* shows. Development on a
+        #: desktop wants the whole frame at half size rather than a 1080-tall
+        #: window on a laptop; on the handheld this is 1.0 and the window is
+        #: the screen.
+        self.scale = scale
+        self.window_size = (
+            max(1, int(SCREEN[0] * scale)),
+            max(1, int(SCREEN[1] * scale)),
+        )
         self.screen = None
         if not headless:
-            self.screen = pygame.display.set_mode(SCREEN)
+            self.screen = pygame.display.set_mode(self.window_size)
         self.offset = (
             (SCREEN[0] - self.frame[0]) // 2,
             (SCREEN[1] - self.frame[1]) // 2,
@@ -96,7 +106,15 @@ class MobileApp:
         image = self.buffer.render()
         if self.screen is not None:
             self.screen.fill((0, 0, 0))
-            self.screen.blit(image, self.offset)
+            if self.scale == 1.0:
+                self.screen.blit(image, self.offset)
+            else:
+                # Scaled for a smaller window, and *smoothly*: this is the one
+                # place the game is allowed to blur, because it is a preview of
+                # the device rather than the device.
+                self.screen.blit(
+                    pygame.transform.smoothscale(image, self.window_size), (0, 0)
+                )
             pygame.display.flip()
         self._dirty = False
 

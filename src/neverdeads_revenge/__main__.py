@@ -33,6 +33,13 @@ def main(argv: list[str] | None = None) -> int:
         help="who goes down (default noxx)",
     )
     parser.add_argument(
+        "--scale",
+        type=float,
+        default=1.0,
+        metavar="X",
+        help="show the window at X times the device's size (dev on a laptop: 0.5)",
+    )
+    parser.add_argument(
         "--screenshot",
         metavar="DIR",
         default=None,
@@ -59,7 +66,9 @@ def main(argv: list[str] | None = None) -> int:
 
     from .mobile.app import MobileApp
 
-    app = MobileApp(zoom=args.zoom, seed=args.seed, hero=args.hero)
+    app = MobileApp(
+        zoom=args.zoom, seed=args.seed, hero=args.hero, scale=args.scale
+    )
     app.redraw()
     app.loop()
     return 0
