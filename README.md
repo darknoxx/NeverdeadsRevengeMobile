@@ -29,7 +29,7 @@ the APK, and whatever the real pad says once it is running on the device.
 | 1 | theme, font, buffer, render, the three-band layout | done |
 | 2 | the pad: mapping, polling, the raw bench (`--sniff`) | done, awaiting a device |
 | 3 | Android plumbing: save paths, back button, wake lock, pause/resume | done |
-| 4 | the APK: toolchain, build, sideload | next |
+| 4 | the APK: toolchain, build, sideload | **built** -- `bin/neverdeads_revenge-0.1.0-arm64-v8a-debug.apk`, awaiting a device |
 
 ## Running it (development, on a desktop)
 

@@ -1,4 +1,5 @@
 .venv/
+.venv-android/
 __pycache__/
 *.pyc
 .buildozer/

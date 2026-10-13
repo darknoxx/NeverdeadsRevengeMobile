@@ -17,8 +17,12 @@ first ``buildozer android debug`` as the test of it.
 
 from os.path import join
 
+import sh
+
+from pythonforandroid.logger import info, shprint
 from pythonforandroid.recipe import CompiledComponentsPythonRecipe
 from pythonforandroid.toolchain import current_directory
+from pythonforandroid.util import ensure_dir
 
 __all__ = ["PygameCeRecipe"]
 
@@ -45,6 +49,14 @@ class PygameCeRecipe(CompiledComponentsPythonRecipe):
         "jpeg",
         "png",
     ]
+
+    #: pygame-ce builds from .pyx sources, so the *host* Python that runs
+    #: setup.py needs Cython -- and this is how p4a installs a build tool into
+    #: the host Python (kivy's recipe does the same). 3.1 is not a preference:
+    #: p4a 2026.05 builds the target Python as 3.14, and Cython below 3.1 cannot
+    #: compile against the 3.14 C-API (`_PyLong_AsByteArray` gained an argument),
+    #: which is what p4a's own cython recipe is pinned to.
+    hostpython_prerequisites = ["cython==3.1.3"]
     call_hostpython_via_targetpython = False  # because of setuptools
     install_in_hostpython = False
 
@@ -103,6 +115,31 @@ class PygameCeRecipe(CompiledComponentsPythonRecipe):
         env["PYGAME_CROSS_COMPILE"] = "TRUE"
         env["PYGAME_ANDROID"] = "TRUE"
         return env
+
+    def install_python_package(self, arch, name=None, env=None, is_dir=True):
+        """Install what setup.py built, instead of asking pip (and so meson).
+
+        pygame-ce's pyproject.toml names meson-python as its build backend, and
+        meson will not cross-compile a Python extension this way: its sanity
+        check compiles a program for Android and then tries to *run* it on the
+        build machine, which fails as "binary or interpreter not executable".
+        But the setup.py build that p4a already drives -- the same one upstream
+        pygame used -- works, so this copies its output straight into the target
+        site-packages rather than rebuilding through meson.
+        """
+        import glob
+        import shutil
+
+        if env is None:
+            env = self.get_recipe_env(arch)
+        info("Installing {} into site-packages".format(self.name))
+        target = self.ctx.get_python_install_dir(arch.arch)
+        ensure_dir(target)
+        hostpython = sh.Command(self.hostpython_location)
+        with current_directory(self.get_build_dir(arch.arch)):
+            shprint(hostpython, "setup.py", "build", "-v", _env=env)
+            built = glob.glob("build/lib.*")[0]
+            shutil.copytree(built, target, dirs_exist_ok=True)
 
 
 recipe = PygameCeRecipe()
