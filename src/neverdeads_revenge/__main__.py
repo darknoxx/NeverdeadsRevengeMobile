@@ -54,6 +54,7 @@ def main(argv: list[str] | None = None) -> int:
         from .mobile.app import ZOOMS, MobileApp
         from .mobile.shots import stage_a_moment
 
+        os.makedirs(args.screenshot, exist_ok=True)
         for zoom in ("S", "M", "L"):
             app = MobileApp(zoom=zoom, seed=args.seed, hero=args.hero, headless=True)
             stage_a_moment(app)
