@@ -49,7 +49,7 @@ from .audio import Sfx, loudest_kind, sound_for_kind
 from .buffer import PatternBuffer
 from .effects import Effects, Shake
 from .font import BitmapFont
-from .input import KeyEvent, button_name, dpad_direction, key_name, stick_direction
+from .input import KeyEvent, button_name, dpad_direction, key_name
 from .render import draw_game, regions, screen_point
 from .screens.game import GameScreen
 from .screens.title import TitleScreen
@@ -573,20 +573,19 @@ class MobileApp:
         return True
 
     def _direction_now(self) -> str | None:
-        """Where the player is pushing: the d-pad first, the stick after, keys last.
+        """Where the player is pushing: the d-pad, and the keys after it.
 
-        The d-pad is preferred because it is the instrument a grid wants -- eight
-        positions and no in-between -- and it is read as a hat *or* as the four
-        buttons SDL reserves for it, because not every pad reports a hat (the one
-        on the bench did not, which is why the d-pad did nothing). The stick is
-        still read, after the d-pad: it drifts, but it is a usable fallback and
-        on a pad without a d-pad it is the only thing there is.
+        The d-pad is the instrument a grid wants -- eight positions and no
+        in-between -- and it is read as a hat *or* as the four buttons SDL
+        reserves for it, because not every pad reports a hat.
+
+        The analog stick is deliberately **not** read for movement. It drifts,
+        and a drifting stick is not a metaphor: a resting stick on the bench
+        reported itself as "down" forever, which scrolled the premise and ran
+        the menus off the bottom of the screen. The bench still shows it raw.
         """
         for pad in self.joysticks:
             direction = dpad_direction(pad)
-            if direction is not None:
-                return direction
-            direction = stick_direction(pad)
             if direction is not None:
                 return direction
         pressed = pygame.key.get_pressed()

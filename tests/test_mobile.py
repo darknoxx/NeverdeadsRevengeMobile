@@ -423,9 +423,12 @@ def test_the_dpad_steers_however_the_pad_reports_it(app):
     pad.buttons = {11, 14}  # up + right, SDL's d-pad buttons
     assert app._direction_now() == "ne", "the d-pad as buttons does not steer"
 
+    # The stick is pushed hard and nothing else: it must NOT steer. A drifting
+    # resting stick reported itself as "down" forever on the handheld, which
+    # scrolled the premise and ran every menu off the bottom of the screen.
     pad.buttons = set()
-    pad.axis = (0.9, 0.0)  # the stick, read only behind the d-pad
-    assert app._direction_now() == "right", "the stick fallback does not steer"
+    pad.axis = (0.0, 0.95)
+    assert app._direction_now() is None, "the drifting stick still steers"
 
 
 def test_the_pause_menu_opens_the_pad_bench(app):
