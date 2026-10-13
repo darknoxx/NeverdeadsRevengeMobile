@@ -113,7 +113,11 @@ def key_name(event) -> str | None:
     named = KEYS.get(event.key)
     if named is not None:
         return named
-    text = event.text or ""
+    # ``unicode`` and not ``text``: pygame's own spelling. A KEYUP has no
+    # ``unicode`` at all, which is why this reads it defensively -- the
+    # desktop's QKeyEvent has ``text()``, and assuming the same name here cost
+    # a crash on the first real key release.
+    text = getattr(event, "unicode", "") or ""
     return text.lower() if text else None
 
 

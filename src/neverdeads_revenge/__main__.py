@@ -66,18 +66,35 @@ def main(argv: list[str] | None = None) -> int:
         # Headless: SDL's dummy driver, so this works over SSH and in CI.
         os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
         os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
+        # A screenshot is a photograph, not a session: it must not read or
+        # write the player's own progress, and it must be the *same* moment at
+        # all three zooms. So it gets a throwaway home and a fixed seed.
+        import tempfile
+
+        os.environ["NEVERDEADS_REVENGE_HOME"] = tempfile.mkdtemp(prefix="ndrm-shots-")
+        if args.testrun:
+            from .persistence import grant_test_save
+
+            grant_test_save()
+
         from .mobile.app import ZOOMS, MobileApp
         from .mobile.shots import stage_a_moment
 
         os.makedirs(args.screenshot, exist_ok=True)
+        seed = args.seed if args.seed is not None else 1
         for zoom in ("S", "M", "L"):
             app = MobileApp(
                 zoom=zoom,
-                seed=args.seed,
+                seed=seed,
                 hero=args.hero,
                 headless=True,
                 testrun=args.testrun,
             )
+            # The premise is told once, between the choice and the floor; a
+            # photograph is taken after it. begin_run is what builds the run
+            # stage_a_moment then dresses.
+            app.prologue_seen = True
+            app.begin_run(args.hero)
             stage_a_moment(app)
             app.screenshot(f"{args.screenshot.rstrip('/')}/zoom_{zoom}.png")
             print(

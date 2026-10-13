@@ -97,7 +97,7 @@ class MobileApp:
         self.pixel_size = ZOOMS[zoom]
         self.font = BitmapFont(self.pixel_size)
         self.cols, self.rows = GRID_FOR(self.font)
-        self.buffer = PatternBuffer(self.cols, self.rows, self.font)
+        self._buffer = PatternBuffer(self.cols, self.rows, self.font)
         self.frame = (self.cols * self.font.cell_w, self.rows * self.font.cell_h)
         self.scale = scale
         self.window_size = (
@@ -122,6 +122,11 @@ class MobileApp:
         self.sfx = Sfx(muted=no_sound or self.progress.muted)
         self.effects = Effects(self.font.cell_w, self.font.cell_h)
         self.shake = Shake()
+        #: What the screens call ``app.view``. On the desktop it is the CRT
+        #: widget and shaking it warps the sampling; here it is the frame's own
+        #: jitter, and it answers the same two questions -- shake(), and
+        #: is_shaking() -- so the game screen did not have to be touched.
+        self.view = self.shake
         self.screens: list = [TitleScreen()]
         self._seen_log = 0
         self._dirty = True
@@ -153,7 +158,7 @@ class MobileApp:
 
     # -- the picture ---------------------------------------------------------
     def redraw(self) -> None:
-        self.buffer.clear()
+        self._buffer.clear()
         # An opaque modal: nothing under it is drawn. A menu is a panel, not a
         # window onto the dungeon, so the topmost modal starts the stack.
         start = 0
@@ -161,8 +166,8 @@ class MobileApp:
             if getattr(screen, "modal", False):
                 start = index
         for screen in self.screens[start:]:
-            screen.draw(self.buffer, self)
-        image = self.buffer.render()
+            screen.draw(self._buffer, self)
+        image = self._buffer.render()
         self.effects.draw(image)
         if self.screen is not None:
             dx, dy = self.shake.offset()
@@ -177,16 +182,16 @@ class MobileApp:
 
     def screenshot(self, path: str) -> None:
         """Render one frame to a file, without a window."""
-        self.buffer.clear()
+        self._buffer.clear()
         start = 0
         for index, screen in enumerate(self.screens):
             if getattr(screen, "modal", False):
                 start = index
         for screen in self.screens[start:]:
-            screen.draw(self.buffer, self)
+            screen.draw(self._buffer, self)
         image = pygame.Surface(SCREEN)
         image.fill((0, 0, 0))
-        image.blit(self.buffer.render(), self.offset)
+        image.blit(self._buffer.render(), self.offset)
         self.effects.draw(image)
         pygame.image.save(image, path)
 
@@ -199,8 +204,8 @@ class MobileApp:
         return screen_point(
             self.run,
             position,
-            self.buffer.cols,
-            self.buffer.rows,
+            self._buffer.cols,
+            self._buffer.rows,
             self.font.cell_w,
             self.font.cell_h,
         )

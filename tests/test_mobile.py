@@ -1,0 +1,258 @@
+"""The app's own wiring, driven the way the window drives it.
+
+Every other test in this fork tests the engine, which the port did not touch.
+These test the *port*: the event path, the pad, the polling, and the handful of
+attributes the screens ask the app for. They exist because two real crashes got
+past a smoke test that called ``app.key_down`` directly instead of feeding
+events -- which is not how a player plays.
+"""
+
+from __future__ import annotations
+
+import os
+import time
+
+os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
+os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
+
+import pygame  # noqa: E402
+import pytest  # noqa: E402
+
+from neverdeads_revenge.mobile.app import MobileApp  # noqa: E402
+
+KEYCODES = {
+    "enter": pygame.K_RETURN,
+    "escape": pygame.K_ESCAPE,
+    "up": pygame.K_UP,
+    "down": pygame.K_DOWN,
+    "left": pygame.K_LEFT,
+    "right": pygame.K_RIGHT,
+}
+
+
+def key_event(name: str, down: bool = True, text: str = ""):
+    """A real pygame event, the shape the window delivers."""
+    key = KEYCODES.get(name)
+    if key is None:
+        # pygame spells a letter's keycode in lower case and a named key in
+        # upper: K_n, K_SPACE. Both, then. A punctuation key has no code the
+        # game reads anyway -- it comes through as typed text, which is the
+        # whole point of reading ``unicode`` -- so zero is the honest stand-in.
+        for candidate in (f"K_{name}", f"K_{name.upper()}"):
+            key = getattr(pygame, candidate, None)
+            if key is not None:
+                break
+        else:
+            key = 0
+    return pygame.event.Event(
+        pygame.KEYDOWN if down else pygame.KEYUP,
+        key=key,
+        unicode=text or (name if len(name) == 1 else ""),
+        mod=0,
+    )
+
+
+def pad_event(button: int, down: bool = True):
+    return pygame.event.Event(
+        pygame.JOYBUTTONDOWN if down else pygame.JOYBUTTONUP, button=button
+    )
+
+
+@pytest.fixture
+def app():
+    window = MobileApp(headless=True, seed=3, no_sound=True)
+    window.redraw()
+    return window
+
+
+def top(app) -> str:
+    return type(app.screens[-1]).__name__
+
+
+def hold(app, button: int = 0, seconds: float = 1.4) -> None:
+    """Hold a pad button the way a thumb does: down, then frames."""
+    app.handle(pad_event(button, down=True))
+    start = time.monotonic()
+    while time.monotonic() - start < seconds:
+        time.sleep(0.016)
+        app.poll_holds(time.monotonic())
+        app.poll_held(time.monotonic())
+        if top(app) not in ("PrologueScreen", "GameOverScreen", "DeleteProgressScreen"):
+            break
+    app.handle(pad_event(button, down=False))
+
+
+# -- the event path ------------------------------------------------------------
+def test_the_real_event_path_walks_the_whole_stack(app):
+    """Title, hero select, prologue, run -- through pygame events, not through
+    a shortcut the tests invented."""
+    app.handle(key_event("n", text="n"))
+    assert top(app) == "HeroSelectScreen"
+
+    app.handle(pad_event(0, down=True))  # A takes the hero
+    assert top(app) == "PrologueScreen"
+
+    hold(app)  # and a held A lets the premise go
+    assert top(app) == "GameScreen"
+    assert app.run is not None
+
+
+def test_a_key_release_does_not_crash(app):
+    """The first real key release found this: pygame spells it ``unicode``,
+    and the desktop's ``text()`` does not exist here."""
+    app.handle(key_event("n", text="n"))
+    app.handle(key_event("n", down=False))
+    assert top(app) == "HeroSelectScreen"
+
+
+def test_the_pad_drives_a_menu(app):
+    app.handle(key_event("n", text="n"))  # the hero select
+    app.handle(pad_event(1, down=True))  # B: back to the title
+    assert top(app) == "TitleScreen"
+
+    app.handle(pad_event(0, down=True))  # A: the chosen line, a new run
+    assert top(app) == "HeroSelectScreen"
+
+
+# -- the poll ------------------------------------------------------------------
+def test_a_held_direction_walks_and_a_tap_steps_once(app):
+    app.handle(key_event("n", text="n"))
+    app.handle(pad_event(0, down=True))
+    hold(app)
+    state = app.run
+    assert top(app) == "GameScreen"
+
+    app._direction_now = lambda: "right"  # a stick held right
+    now = time.monotonic()
+    app.poll_held(now)
+    once = state.player.steps
+    app.poll_held(now + 0.05)  # too soon for the pace
+    assert state.player.steps == once, "a direction moved twice in one press"
+    app.poll_held(now + 0.5)  # the pace has passed
+    assert state.player.steps > once, "a held direction did not walk"
+
+
+def test_the_loop_body_survives_a_real_sequence(app, monkeypatch):
+    """The whole order the window runs: events, poll, holds, tick, redraw.
+
+    Both crashes the handheld found lived here and not in ``key_down``: the
+    game screen shook a view the app did not have, and a key *release* read a
+    field pygame spells differently. So this drives the loop's own sequence --
+    not a shortcut -- from the title into a run and back out.
+    """
+    queue: list[list] = [
+        [key_event("n", text="n")],   # the hero select
+        [pad_event(0, down=True)],    # A takes the hero
+    ]
+    monkeypatch.setattr(
+        pygame.event, "get", lambda: queue.pop(0) if queue else []
+    )
+    monkeypatch.setattr(app, "_direction_now", lambda: None)
+
+    now = [time.monotonic()]
+
+    def frame() -> None:
+        """One pass of the loop's body, exactly as ``MobileApp.loop`` runs it."""
+        for event in pygame.event.get():
+            assert app.handle(event) or app._quit
+        app.poll_held(now[0])
+        app.poll_holds(now[0])
+        app.tick(0.016)
+        if app._dirty:
+            app.redraw()
+        now[0] += 0.016
+
+    frame()
+    frame()
+    assert top(app) == "PrologueScreen"
+
+    # Hold A until the premise ends. The hold runs on the wall clock, so this
+    # waits on the wall clock too -- a fixed frame count would be a guess.
+    deadline = time.monotonic() + 3.0
+    while top(app) == "PrologueScreen" and time.monotonic() < deadline:
+        time.sleep(0.016)
+        frame()
+    queue.append([pad_event(0, down=False)])
+    frame()
+    assert top(app) == "GameScreen", "a held A did not end the premise"
+    assert app.run is not None
+
+    queue.append([key_event("right")])
+    frame()
+    queue.append([key_event("right", down=False)])
+    frame()
+
+    queue.append([key_event("escape")])  # the pause menu
+    frame()
+    assert top(app) == "PauseScreen"
+
+    queue.append([key_event("escape")])  # and back out of it
+    frame()
+    assert top(app) == "GameScreen"
+
+
+def test_every_menu_opens_from_a_run(app):
+    """Each verb a player presses mid-run, through the event path.
+
+    The menus are where a ported screen meets the app surface, and the two
+    crashes this fork found were both exactly that meeting. So open every one
+    of them from a live run, draw it, and close it again.
+    """
+    from neverdeads_revenge.game.actors import HEROES
+    from neverdeads_revenge.game.state import start_run
+
+    from neverdeads_revenge.mobile.screens.game import GameScreen
+
+    for name in ("i", "l", "c", "?", "f1", "f", "q", "enter"):
+        app.run = start_run(HEROES["noxx"], 3)
+        app.screens = [GameScreen(app.run)]
+        app.handle(key_event(name, text=name if len(name) == 1 else ""))
+        app.redraw()
+        app.handle(key_event("escape"))
+        app.redraw()
+
+
+def test_the_screens_have_what_they_ask_the_app_for(app):
+    """The audit that found ``app.view``: every attribute the screens read."""
+    for name in (
+        "_buffer", "view", "progress", "sfx", "effects", "push", "pop",
+        "play", "play_after", "save_progress", "has_saved_run", "record_run",
+        "screen_point", "redraw", "return_to_title", "save_and_quit",
+        "begin_run", "continue_run", "open_shop", "open_scoreboard",
+        "open_chronicle", "open_hero_select", "open_delete_progress",
+        "toggle_sound", "quit_requested", "confirm_quit_to_title",
+    ):
+        assert hasattr(app, name), f"the screens read app.{name} and it is not there"
+
+
+def test_a_hurt_shakes_the_frame(app):
+    """The game screen shakes the view when the hero is wounded; on the
+    desktop that is the CRT widget, here it is the frame's own jitter.
+
+    Noxx is faster than a ghoul, so the first wait is still his own turn and
+    the blow lands on the second -- waiting in a loop is the honest way to
+    stage it, and it is the energy clock, not a pause in the test.
+    """
+    from neverdeads_revenge.game.actors import ENEMIES, HEROES, make_enemy
+    from neverdeads_revenge.game.state import start_run
+    from neverdeads_revenge.world.tiles import Tile
+
+    from neverdeads_revenge.mobile.screens.game import GameScreen
+
+    app.run = start_run(HEROES["noxx"], 3)
+    square = (app.run.player.position[0] + 1, app.run.player.position[1])
+    app.run.dungeon_map.set_tile(square, Tile.FLOOR)
+    enemy = make_enemy(ENEMIES["ghoul"], square)
+    enemy.stats.damage = (4, 4)
+    enemy.stats.accuracy = 99  # this blow lands, or the test is about dodging
+    app.run.enemies.append(enemy)
+    app.run.turn_queue.add(enemy)
+    app.screens = [GameScreen(app.run)]
+
+    hp = app.run.player.hp
+    for _ in range(8):
+        app.handle(key_event("space", text=" "))  # wait: the ghoul answers
+        if app.run.player.hp < hp:
+            break
+    assert app.run.player.hp < hp, "the ghoul never landed a blow"
+    assert app.view.is_shaking(), "a wound did not shake the frame"
