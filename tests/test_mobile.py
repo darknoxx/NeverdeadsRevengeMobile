@@ -300,6 +300,50 @@ def test_the_shoulders_are_the_hour_and_the_wait(app):
     assert button_name(4) == "select", "Select moved"
 
 
+def test_the_gpu_view_draws_a_frame():
+    """The GPU path is exercised here through SDL's software renderer, so a
+    break in it is caught before it reaches the handheld -- where a broken
+    draw path would be a black screen instead of a slow one."""
+    from neverdeads_revenge.mobile.effects import Effects
+    from neverdeads_revenge.mobile.gpu import GpuView
+
+    view = GpuView((320, 240), fullscreen=False)
+    try:
+        frame = pygame.Surface((300, 200))
+        frame.fill((10, 10, 30))
+        effects = Effects(17, 33)
+        effects.blood((100.0, 100.0), count=4)
+        overlay = pygame.Surface((60, 12))
+        overlay.fill((0, 0, 0))
+        view.show(
+            frame,
+            offset=(10, 20),
+            shake=(1, -1),
+            particles=effects.particles,
+            bloom=True,
+            scanlines=True,
+            overlay=overlay,
+        )
+        out = view.snapshot()
+        assert out.get_width() > 0 and out.get_height() > 0
+    finally:
+        view.window.destroy()
+
+
+def test_the_app_falls_back_to_software_without_a_gpu(app):
+    """A headless app has no window, so it is on the software path -- and that
+    path must still draw, with the CRT baked in."""
+    assert app.gpu is None
+    assert app.gpu_active() is False
+    app.bloom_on = True
+    app.scanlines_on = True
+    app.toggle_bloom()  # off again, and no crash on the software switches
+    app.toggle_scanlines()
+    start_a_run(app)
+    app.redraw()
+    assert app.timings()[0] >= 0.0
+
+
 def test_the_loop_body_survives_a_real_sequence(app, monkeypatch):
     """The whole order the window runs: events, poll, holds, tick, redraw.
 

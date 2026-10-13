@@ -67,9 +67,9 @@ class SniffScreen(Screen):
         buffer.text(
             x + 2,
             y + 4,
-            f"map {app.map_zoom}x   scanlines {'on' if app.scanlines_on else 'off'}   "
-            f"bloom {'on' if app.bloom_on else 'off'}   "
-            f"(last/peak; live: pause -> SHOW FPS)",
+            f"gpu {'on' if app.gpu_active() else 'off'}   map {app.map_zoom}x   "
+            f"scanlines {'on' if app.scanlines_on else 'off'}   "
+            f"bloom {'on' if app.bloom_on else 'off'}",
             parse_style(ASH),
         )
         last = self.events[-1] if self.events else "(nothing yet)"

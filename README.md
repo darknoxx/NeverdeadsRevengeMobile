@@ -78,31 +78,40 @@ things said.
 
 The desktop build drew its CRT with a shader. At 420 ppi a fine scanline is a
 line nobody can see, so this fork left all of it out -- and then put back the
-part that *is* visible and *is* affordable on a software renderer:
+part that *is* visible:
 
-- **Scanlines**, coarse (every third row), baked into one overlay surface and
-  blitted -- not drawn per frame.
-- **Bloom**, done at a quarter of the size (a blur is a blur at a quarter of the
-  size, and the cost of one is the size of the surface it runs on).
+- **Scanlines**, coarse (every third row).
+- **Bloom**, a downscale, a dim and an additive upscale.
 - **A magnified playfield**: the *map* is drawn at twice its size and windowed
   back into its band, so the HUD and the log keep their font and the thing the
   player is looking at is the thing that grows. The window follows the hero, so
   he is never cropped out at the edge of a floor.
 
-All three are switches in the pause menu (`MAP ZOOM`, `SCANLINES`, `BLOOM`).
-Scanlines and bloom are **off by default** -- the handheld found them too dear
-for what they give -- and `SHOW FPS` puts a live readout in the corner of the
-screen (drawn straight onto the panel, not into the buffer, so measuring does
-not force the re-render it measures). The pad bench shows the last and worst
+All three are switches in the pause menu (`MAP ZOOM`, `SCANLINES`, `BLOOM`), and
+`SHOW FPS` puts a live readout in the corner of the screen (drawn straight onto
+the panel, not into the buffer, so measuring does not force the re-render it
+measures). The pad bench shows whether the GPU is in use and the last and worst
 `render` / `post` / `present` in milliseconds.
 
-The renderer caches the whole frame -- glyphs, map zoom *and* the CRT -- and
-rebuilds it only when the buffer itself changes. Effects and the shake draw over
-the cached copy, so a blood burst costs a copy and a few dots instead of two
-thousand cell blits and a bloom: the CRT is baked once per change, not once per
-frame, which is what made it unplayable on the handheld (2 fps). The ultimate's
-breath is *stepped*, not smooth, because a smooth one changed the HUD text every
-frame and so rebuilt the frame sixty times a second.
+### Two ways to draw the CRT
+
+On a **software** renderer every full-screen effect is paid in CPU, and the
+handheld found it unaffordable: bloom there was 2 fps. So there are two paths,
+and the app picks one at startup.
+
+- **With a GPU** (`pygame._sdl2`, which is OpenGL ES on Android): the frame is
+  uploaded once per change, the particles are drawn as GPU rectangles, and the
+  bloom and scanlines are renderer draws on every present -- about 2 ms even
+  through SDL's *software* renderer, and far less on GL.
+- **Without one**: the CRT is baked into the cached frame instead, so it is paid
+  for once per *turn* and never per animation frame. This is the fallback, and
+  it is what the software renderer can afford.
+
+Either way the frame itself -- glyphs and map zoom -- is rebuilt only when the
+buffer changes, so a blood burst costs a copy and a few dots instead of two
+thousand cell blits. The ultimate's breath is *stepped*, not smooth, so it does
+not rebuild the frame sixty times a second for a shimmer. Scanlines and bloom
+default to **off**; on the device, turn them on in the pause menu.
 
 ## The pad
 

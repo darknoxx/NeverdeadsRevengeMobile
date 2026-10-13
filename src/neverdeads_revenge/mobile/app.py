@@ -141,16 +141,23 @@ class MobileApp:
     ) -> None:
         pygame.init()
         pygame.joystick.init()
-        pygame.display.set_caption("Neverdead's Revenge")
         self.headless = headless
         self.pixel_size = ZOOMS[zoom]
         self.font = BitmapFont(self.pixel_size)
         self.scale = scale
         self.screen = None
+        #: The GPU view, or ``None``. Tried first because it makes the CRT
+        #: almost free; falling back to the software window is not a failure,
+        #: it is the other half of the design.
+        self.gpu = None if headless else self._make_gpu(scale)
         if headless:
             # No window at all: screenshots are taken at the device's size.
             self.surface_size = SCREEN
+        elif self.gpu is not None:
+            pygame.display.set_caption("Neverdead's Revenge")
+            self.surface_size = self.gpu.size
         elif _on_android():
+            pygame.display.set_caption("Neverdead's Revenge")
             # A handheld is always fullscreen, and the *real* surface is
             # whatever the panel and the system bars leave. Asking SDL for the
             # screen rather than assuming 1240x1080 is what keeps the bottom of
@@ -160,6 +167,7 @@ class MobileApp:
             # A driver that answers (0,0) with (0,0) must not make a zero grid.
             self.surface_size = size if min(size) > 100 else SCREEN
         else:
+            pygame.display.set_caption("Neverdead's Revenge")
             requested = (
                 max(1, int(SCREEN[0] * scale)),
                 max(1, int(SCREEN[1] * scale)),
@@ -271,6 +279,32 @@ class MobileApp:
         self._buffer_dirty = True
 
     # -- the picture ---------------------------------------------------------
+    def _make_gpu(self, scale: float):
+        """The GPU window, or ``None`` when there is none to be had.
+
+        Tried once and never fatal: whatever fails here -- no GL, an old driver,
+        a desktop that says no -- leaves the software path exactly as it was.
+        ``NDRM_NO_GPU=1`` skips it on purpose, for comparing the two.
+        """
+        if os.environ.get("NDRM_NO_GPU"):
+            return None
+        try:
+            from .gpu import GpuView
+
+            requested = (
+                max(1, int(SCREEN[0] * scale)),
+                max(1, int(SCREEN[1] * scale)),
+            )
+            view = GpuView(requested, fullscreen=_on_android() or scale >= 1.0)
+            if min(view.size) <= 100:
+                # A driver that answers with nothing usable is not one to build
+                # a grid on; hand it back and take the software path.
+                view.window.destroy()
+                return None
+            return view
+        except Exception:
+            return None
+
     def _compose_frame(self) -> pygame.Surface:
         """Draw the stack into one finished frame: glyphs, zoom, and the CRT.
 
@@ -308,19 +342,28 @@ class MobileApp:
                 self.font.cell_h,
                 self.map_zoom,
             )
-        if self.bloom_on:
-            bloom(image)
-        if self.scanlines_on:
-            scanlines(image)
+        # The CRT is baked in only when there is no GPU to draw it: on the GPU
+        # it is a per-present draw, and baking it would pay for it on every
+        # *turn* instead -- which is exactly the cost the GPU exists to remove.
+        if self.gpu is None:
+            if self.bloom_on:
+                bloom(image)
+            if self.scanlines_on:
+                scanlines(image)
         return image
 
     def redraw(self) -> None:
         """Draw the frame and put it on the screen.
 
-        The frame -- glyphs, zoom and CRT -- is rebuilt only when the *buffer*
+        The frame -- glyphs and map zoom -- is rebuilt only when the *buffer*
         changes. Effects and the shake draw over the cached copy, so a blood
-        burst costs a copy and a few dots instead of two thousand blits and a
-        bloom, which is what made the effects unplayable on the handheld.
+        burst costs a copy and a few dots instead of two thousand cell blits.
+
+        Then there are two ways to put it up. With a GPU, the CRT is a handful
+        of renderer draws on every present, which is cheap; without one, it is
+        baked into the cached frame instead, so it is paid for on a *turn* and
+        never on an animation frame. Same picture, and the fallback is the only
+        version the software renderer can afford.
         """
         started = time.perf_counter()
         if self._glyph_frame is None or self._buffer_dirty:
@@ -328,6 +371,34 @@ class MobileApp:
             self._buffer_dirty = False
         self._render_ms = (time.perf_counter() - started) * 1000.0
 
+        if self.gpu is not None:
+            self._redraw_gpu()
+        else:
+            self._redraw_software()
+
+        self._render_peak = max(self._render_peak, self._render_ms)
+        self._post_peak = max(self._post_peak, self._post_ms)
+        self._present_peak = max(self._present_peak, self._present_ms)
+        self._dirty = False
+
+    def _redraw_gpu(self) -> None:
+        """Hand the frame to the renderer, which does the rest."""
+        overlay = self._fps_surface() if self.show_fps else None
+        started = time.perf_counter()
+        self.gpu.show(
+            self._glyph_frame,
+            offset=self.offset,
+            shake=self.shake.offset(),
+            particles=self.effects.particles,
+            bloom=self.bloom_on,
+            scanlines=self.scanlines_on,
+            overlay=overlay,
+        )
+        self._post_ms = 0.0  # bloom and scanlines ride along inside the present
+        self._present_ms = (time.perf_counter() - started) * 1000.0
+
+    def _redraw_software(self) -> None:
+        """The path for a device with no renderer: a blit and a flip."""
         post_started = time.perf_counter()
         # Copy only when something is about to write on it.
         if self.effects.active:
@@ -354,14 +425,16 @@ class MobileApp:
             # affordable.
             self._present_ms = (time.perf_counter() - present_started) * 1000.0
             pygame.display.flip()
-        self._render_peak = max(self._render_peak, self._render_ms)
-        self._post_peak = max(self._post_peak, self._post_ms)
-        self._present_peak = max(self._present_peak, self._present_ms)
-        self._dirty = False
 
     def screenshot(self, path: str) -> None:
         """Render one frame to a file, without a window."""
         frame = self._compose_frame()
+        if self.gpu is not None:
+            # The GPU dresses the frame at present; a file has to carry it.
+            if self.bloom_on:
+                bloom(frame)
+            if self.scanlines_on:
+                scanlines(frame)
         self.effects.draw(frame)
         image = pygame.Surface(self.surface_size)
         image.fill((0, 0, 0))
@@ -380,32 +453,42 @@ class MobileApp:
         """The smoothed frame rate, for the bench."""
         return self._fps
 
-    def _draw_fps_readout(self) -> None:
-        """The live numbers, straight onto the screen and not into the buffer.
+    def gpu_active(self) -> bool:
+        """Whether the CRT is being drawn on the GPU, for the bench."""
+        return self.gpu is not None
 
-        Drawing them into the buffer would change the buffer every frame, which
-        would force exactly the re-render the numbers exist to measure.
-        """
+    def _fps_surface(self) -> pygame.Surface:
+        """The live numbers as a small surface -- the window blits it, the GPU
+        uploads it. Never into the buffer: drawing them there would change the
+        buffer every frame and force the very re-render the numbers measure."""
         text = (
             f"{self._fps:4.0f}fps  r{self._render_ms:3.0f} "
             f"p{self._post_ms:3.0f} v{self._present_ms:3.0f}"
         )
         label = self.font.bold.render(text, False, (255, 230, 120))
-        self.screen.fill((0, 0, 0), (0, 0, label.get_width() + 4, label.get_height()))
-        self.screen.blit(label, (2, 0))
+        surface = pygame.Surface((label.get_width() + 4, label.get_height()))
+        surface.fill((0, 0, 0))
+        surface.blit(label, (2, 0))
+        return surface
+
+    def _draw_fps_readout(self) -> None:
+        """The live numbers, straight onto the software window."""
+        self.screen.blit(self._fps_surface(), (0, 0))
 
     # -- the CRT switches ----------------------------------------------------
     def toggle_scanlines(self) -> None:
-        # The CRT is baked into the cached frame now, so a switch means the
-        # frame must be rebuilt -- once, not per frame.
         self.scanlines_on = not self.scanlines_on
         self._dirty = True
-        self._buffer_dirty = True
+        if self.gpu is None:
+            # The software path bakes the CRT into the cached frame, so a switch
+            # means the frame must be rebuilt -- once, not per frame.
+            self._buffer_dirty = True
 
     def toggle_bloom(self) -> None:
         self.bloom_on = not self.bloom_on
         self._dirty = True
-        self._buffer_dirty = True
+        if self.gpu is None:
+            self._buffer_dirty = True
 
     def toggle_map_zoom(self) -> None:
         """Cycle the playfield between life-size and magnified."""
