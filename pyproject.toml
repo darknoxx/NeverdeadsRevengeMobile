@@ -1,0 +1,31 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "neverdeads-revenge-mobile"
+version = "0.1.0"
+description = "Neverdead's Revenge Mobile -- the same dungeon, on a handheld."
+readme = "README.md"
+requires-python = ">=3.12"
+license = { text = "MIT" }
+license-files = ["LICENSE"]
+authors = [{ name = "darknoxx" }]
+keywords = ["roguelite", "android", "handheld", "pygame", "retro", "game"]
+classifiers = [
+    "Intended Audience :: End Users/Desktop",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Topic :: Games/Entertainment :: Role-Playing",
+]
+
+dependencies = ["pygame-ce>=2.5"]
+
+[project.optional-dependencies]
+dev = ["pytest>=9.0"]
+
+[project.scripts]
+ndrm = "neverdeads_revenge.__main__:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/neverdeads_revenge"]
