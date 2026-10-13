@@ -6,3 +6,4 @@ bin/
 *.apk
 *.png
 !assets/**/*.png
+!docs/**/*.png
