@@ -57,12 +57,22 @@ The flags:
 
 | zoom | font | grid | the frame | what it is for |
 | --- | --- | --- | --- | --- |
-| S | 20px | **95x43** | 1235x1075 | the most dungeon and the longest log |
+| S | 20px | **95x43** | 1235x1075 | the most dungeon |
 | M | 27px | **72x32** | 1224x1056 | the middle, and the default |
 | L | 36px | **56x25** | 1232x1075 | the biggest letters, a tighter view |
 
 Screenshots of the same moment at all three, from `--screenshot`:
 `docs/zoom_s.png`, `docs/zoom_m.png`, `docs/zoom_l.png`.
+
+## The screen
+
+Three bands, and no rules between them -- each rule cost a row, and the bands
+read apart without one. The **HUD** is health on its own line (with the
+ultimate's ask in the top-right corner of that line, where the eye goes without
+spending a line of playfield), then the level and floor, the fight's numbers,
+the gold, what is worn, what is working, and the charge. The **map** takes
+everything else, magnified 2x into its own band. The **log** is the last three
+things said.
 
 ## The CRT, what is left of it
 

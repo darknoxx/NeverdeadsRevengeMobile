@@ -83,10 +83,6 @@ ULTIMATE_PROMPTS: dict[str, tuple[str, tuple[int, int, int]]] = {
     "walkyrion": ("shatter the golden bell", (212, 175, 55)),
 }
 
-#: How many rows the map needs to show a full field of view (radius 8-10) with
-#: room to spare. The layout never goes below it, whatever the zoom.
-_MAP_FLOOR = 18
-
 _BAR_CELLS = 14
 
 #: How long one step of the ultimate's breath lasts, in seconds. See
@@ -97,28 +93,29 @@ _SHORT_NAME = 12
 _SLOT_GLYPH = {"weapon": WEAPON_GLYPH, "armour": ARMOUR_GLYPH, "amulet": AMULET_GLYPH}
 
 
+#: How many lines the log shows: the last three things said. The rest of the
+#: height goes to the map, which is what the player is looking at.
+_LOG_LINES = 3
+
+
 # -- layout -------------------------------------------------------------------
 def regions(cols: int, rows: int) -> dict[str, tuple[int, int, int, int]]:
     """The three bands, in cells: ``hud``, ``map``, ``log``.
 
-    A taller screen gets a taller HUD and a longer log; a shorter one keeps the
-    map's floor first, because the map is the thing the player is looking at.
+    No rules between them. Each rule cost a row, and the bands read apart
+    without them -- the log is a different thing whether or not a line says so.
+    The log is three lines, and everything else goes to the map.
+
+    The HUD is: health, the level and the floor, the numbers, the gold, the
+    gear, what is working, and the charge. Seven lines, and a screen with fewer
+    rows keeps the top of the list, which is the order that matters.
     """
-    # The HUD's last row is the rule under it, so the content is one less:
-    # health, the run's numbers, the ultimate, and what is working. A screen
-    # with the rows to spare shows all four; a short one keeps the first three,
-    # because those are the ones a decision is made with.
-    # Health, the numbers, the gold, the gear, the ask, what is working, and
-    # the charge -- seven lines, and the rule under them. A screen with the
-    # rows to spare shows all of it; a short one keeps the top of the list,
-    # which is why the order is health, numbers, gold, gear, ask.
-    hud = 8 if rows >= 30 else 6 if rows >= 22 else 5
-    log = max(4, min(14, rows - hud - _MAP_FLOOR))
-    map_h = rows - hud - log
+    hud = 7 if rows >= 30 else 6 if rows >= 22 else 5
+    map_h = rows - hud - _LOG_LINES
     return {
         "hud": (0, 0, cols, hud),
         "map": (0, hud, cols, map_h),
-        "log": (0, hud + map_h, cols, log),
+        "log": (0, hud + map_h, cols, _LOG_LINES),
     }
 
 
@@ -257,34 +254,42 @@ def draw_game(buffer: PatternBuffer, state: GameState, now: float | None = None)
 
 # -- the HUD -------------------------------------------------------------------
 def _draw_hud(buffer, state, area, now: float) -> None:
-    """Health first, then the numbers, then the ask, then what is working.
+    """Health first, then the level and floor, then the numbers and what is worn.
 
     The order is the layout's opinion about what matters, and it is the same
     order the lines are *clipped* in: a screen too short for all of them keeps
-    the ones at the top. The ultimate comes before the marks on purpose -- it
-    is the one line that changes what the next press can do.
+    the ones at the top. There is no rule under the HUD -- it cost a row, and
+    the map below it is rule enough.
+
+    The ultimate's ask sits in the *top-right corner*, on the health line's own
+    row: it is the one line that changes what the next press can do, and a
+    corner is where the eye goes without spending a line of playfield on it.
     """
     x0, y0, width, height = area
-    content = height - 1  # the last row is the rule under the HUD
     row = y0
     for text, style in hud_lines(state):
-        if row >= y0 + content:
+        if row >= y0 + height:
             break
         buffer.text(x0 + 1, row, text[: width - 2], parse_style(style))
         row += 1
 
     prompt = ultimate_prompt(state, now)
-    if prompt is not None and row < y0 + content:
+    if prompt is not None:
         text, colour = prompt
-        buffer.text(x0 + 1, row, text[: width - 2], Style(fg=colour, bold=True))
-        row += 1
+        text = text[: width // 2]
+        buffer.text(
+            x0 + width - 2 - len(text),
+            y0,
+            text,
+            Style(fg=colour, bold=True),
+        )
 
     marks = marks_line(state)
-    if marks and row < y0 + content:
+    if marks and row < y0 + height:
         buffer.text(x0 + 1, row, marks[: width - 2], parse_style("grey70"))
         row += 1
 
-    if state.revenge_stacks and row < y0 + content:
+    if state.revenge_stacks and row < y0 + height:
         player = state.player
         buffer.text(
             x0 + 1,
@@ -293,8 +298,6 @@ def _draw_hud(buffer, state, area, now: float) -> None:
             parse_style("bold green"),
         )
         row += 1
-
-    rule(buffer, x0, y0 + height - 1, width, "grey30")
 
 
 def hud_lines(state: GameState) -> list[tuple[str, str]]:
@@ -310,12 +313,16 @@ def hud_lines(state: GameState) -> list[tuple[str, str]]:
     ratio = player.hp / player.max_hp if player.max_hp else 0.0
     filled = max(0, min(_BAR_CELLS, round(ratio * _BAR_CELLS)))
     bar_colour = "green" if ratio > 0.5 else "yellow" if ratio > 0.25 else "red"
+    # Health is its own line: the ask lives in the corner beside it and the
+    # level and floor have the line under it, so nothing crowds the bar.
     lines.append(
         (
-            f"HP {'█' * filled}{'░' * (_BAR_CELLS - filled)} {player.hp}/{player.max_hp}"
-            f"   Lv {state.level}   Floor {state.depth}/{ESCAPE_DEPTH}",
+            f"HP {'█' * filled}{'░' * (_BAR_CELLS - filled)} {player.hp}/{player.max_hp}",
             bar_colour,
         )
+    )
+    lines.append(
+        (f"Lv {state.level}   Floor {state.depth}/{ESCAPE_DEPTH}", "bold white")
     )
 
     # The numbers a fight is decided with. The desktop had them in a sidebar
@@ -539,8 +546,7 @@ def _wrap(text: str, width: int) -> list[str]:
 
 def _draw_log(buffer, state, area) -> None:
     x0, y0, width, height = area
-    rule(buffer, x0, y0, width, "grey30")
-    rows = height - 1
+    rows = height
     if rows < 1:
         return
 
@@ -552,7 +558,7 @@ def _draw_log(buffer, state, area) -> None:
         for piece in _wrap(entry.text, width - 2):
             wrapped.append((piece, style))
     for i, (text, style) in enumerate(wrapped[-rows:]):
-        buffer.text(x0 + 1, y0 + 1 + i, text, parse_style(style))
+        buffer.text(x0 + 1, y0 + i, text, parse_style(style))
 
 
 # -- the reference (the legend, for its own menu) -------------------------------
