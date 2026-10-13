@@ -50,7 +50,7 @@ from .buffer import PatternBuffer
 from .effects import Effects, Shake
 from .font import BitmapFont
 from .input import KeyEvent, button_name, dpad_direction, key_name
-from .crt import bloom, scanline_overlay
+from .crt import bloom, scanlines
 from .render import draw_game, pulse_level, regions, screen_point, zoom_map
 from .screens.game import GameScreen
 from .screens.title import TitleScreen
@@ -66,6 +66,17 @@ ZOOMS: dict[str, int] = {"S": 20, "M": 27, "L": 36}
 #: font the zoom chose; the playfield is drawn twice as large and windowed back
 #: into its band, so the thing the player is looking at is the thing that grows.
 MAP_ZOOM = 2
+
+#: The analog triggers, which SDL keeps on axes and not buttons: L2 is the
+#: borrowed hour, R2 is the wait. A pad's triggers were the two free controls
+#: left, and they are *positions*, so they are polled like a stick.
+TRIGGER_KEYS = {4: "r", 5: " "}
+
+#: How far a trigger must move from its resting value to count as pressed. The
+#: resting value is learned from the first reading, because a trigger rests at
+#: -1 on some pads and 0 on others, and guessing would either fire at rest or
+#: never fire at all.
+TRIGGER_THRESHOLD = 0.5
 
 #: The device's screen. The frame is centred inside it and the remainder is
 #: black: at these zooms the leftover is 0 to 24 pixels, which is a bezel.
@@ -201,8 +212,6 @@ class MobileApp:
         self.map_zoom = MAP_ZOOM
         self.scanlines_on = False
         self.bloom_on = False
-        #: The scanline surface, built once per screen size and reused.
-        self._scan_overlay = None
         #: The rendered glyph frame, rebuilt only when the *buffer* changes --
         #: see :meth:`redraw`. Effects and the shake reuse it, so a blood burst
         #: no longer re-renders two thousand cells a frame.
@@ -256,6 +265,10 @@ class MobileApp:
         #: When the current hold's key went down, so the repeat stream can wait
         #: before it starts -- see :meth:`poll_holds`.
         self._hold_down_at: float | None = None
+        #: The resting value of each trigger axis, learned from the first
+        #: reading, and which ones are currently pulled.
+        self._trigger_rest: dict[tuple[int, int], float] = {}
+        self._trigger_down: set[tuple[int, int]] = set()
         #: The Android wake lock, if this build could take one. See
         #: :meth:`_acquire_wakelock`.
         self._wakelock = None
@@ -313,14 +326,8 @@ class MobileApp:
         if self.bloom_on:
             bloom(image)
         if self.scanlines_on:
-            image.blit(self._scanlines(image.get_size()), (0, 0))
+            scanlines(image)
         return image
-
-    def _scanlines(self, size: tuple[int, int]) -> pygame.Surface:
-        """The scanline overlay, built once per size and then reused."""
-        if self._scan_overlay is None or self._scan_overlay.get_size() != size:
-            self._scan_overlay = scanline_overlay(size)
-        return self._scan_overlay
 
     def redraw(self) -> None:
         """Draw the frame and put it on the screen.
@@ -817,6 +824,37 @@ class MobileApp:
         self._last_hold_repeat = now
         self.key_down(key, repeat=True)
 
+    def poll_triggers(self) -> None:
+        """Read the analog triggers, which are positions and not buttons.
+
+        SDL keeps L2 and R2 on axes, and a resting trigger is not the same value
+        on every pad -- -1 on some, 0 on others -- so the resting value is
+        learned from the first reading and a trigger counts as pressed once it
+        has moved far enough from it. This is how the handheld's two free
+        controls get the borrowed hour and the wait: every other control was
+        taken, and these were the ones with nothing on them.
+        """
+        for index, pad in enumerate(self.joysticks):
+            axes = pad.get_numaxes()
+            for axis, key in TRIGGER_KEYS.items():
+                if axis >= axes:
+                    continue
+                value = pad.get_axis(axis)
+                slot = (index, axis)
+                rest = self._trigger_rest.get(slot)
+                if rest is None:
+                    # The first reading is the rest: assume nobody is holding a
+                    # trigger down at the moment the game starts.
+                    self._trigger_rest[slot] = value
+                    continue
+                pressed = abs(value - rest) >= TRIGGER_THRESHOLD
+                if pressed and slot not in self._trigger_down:
+                    self._trigger_down.add(slot)
+                    self.key_down(key, text=key if key.isprintable() else "")
+                elif not pressed and slot in self._trigger_down:
+                    self._trigger_down.discard(slot)
+                    self.key_up(key)
+
     def poll_held(self, now: float) -> None:
         """A pushed direction walks, at the hero's own pace.
 
@@ -907,6 +945,7 @@ class MobileApp:
                     running = False
             self.poll_held(now)
             self.poll_holds(now)
+            self.poll_triggers()
             self.tick(dt)
             if self._dirty:
                 self.redraw()

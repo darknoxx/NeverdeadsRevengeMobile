@@ -27,6 +27,7 @@ class PauseScreen(Screen):
             ("r", "RESUME"),
             ("c", "CONTROLS"),
             ("p", "THE PAD"),
+            ("t", "THE SHEET"),
             ("z", f"MAP ZOOM: {app.map_zoom}x"),
             ("x", f"SCANLINES: {'on' if app.scanlines_on else 'off'}"),
             ("b", f"BLOOM: {'on' if app.bloom_on else 'off'}"),
@@ -62,7 +63,7 @@ class PauseScreen(Screen):
         if name in ("escape", "r"):
             app.pop()
             return True
-        if name in ("s", "q", "m", "c", "p", "z", "x", "b", "f"):
+        if name in ("s", "q", "m", "c", "p", "t", "z", "x", "b", "f"):
             self._choose(name, app)
             return True
         return True
@@ -82,6 +83,14 @@ class PauseScreen(Screen):
             from .sniff import SniffScreen
 
             app.push(SniffScreen())
+        elif key == "t":
+            # The sheet, here because its own button turned out to be one of the
+            # stick clicks on the handheld, and a stick click is not a thing
+            # anyone looks for.
+            from .menus import CharacterScreen
+
+            if app.run is not None:
+                app.push(CharacterScreen(app.run))
         elif key == "s":
             app.save_and_quit()
         elif key == "q":

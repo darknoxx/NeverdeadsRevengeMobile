@@ -100,12 +100,14 @@ The gamepad is the only input the device has, and the keyboard stands in for it
 on a laptop. Movement is the **D-pad** (and the arrow keys): a D-pad is a hat --
 eight positions and no in-between -- which is what a grid wants. The analog
 stick is deliberately *not* read for movement; it drifts and has no true rest.
-Directions are **polled** (a hat has a position, not a stream of presses);
-everything else -- buttons, letters, a menu's shortcuts -- arrives as an event,
-one press one action. Holding a direction walks at the hero's own pace, after a
-repeat delay so a tap is one square. `--sniff` opens a bench that shows every
-axis, button and hat raw, beside the name the game gives it: that is where a
-mapping is checked against a real pad.
+The **triggers** are read as positions too, and are self-calibrating: L2 is the
+borrowed hour and R2 is the wait, and each trigger's resting value is learned
+from the first reading, because a trigger rests at -1 on some pads and 0 on
+others. Directions are **polled**; everything else -- buttons, letters, a menu's
+shortcuts -- arrives as an event, one press one action. Holding a direction walks
+at the hero's own pace, after a repeat delay so a tap is one square. `--sniff`
+opens a bench that shows every axis, button and hat raw, beside the name the game
+gives it: that is where a mapping is checked against a real pad.
 
 ## On Android
 

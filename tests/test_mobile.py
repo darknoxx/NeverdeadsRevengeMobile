@@ -285,6 +285,39 @@ def test_an_effect_frame_does_not_re_render_the_glyphs(app):
     assert app._glyph_frame is not cached, "an input did not re-render"
 
 
+def test_the_triggers_are_learned_and_fire(app):
+    """The two free controls on the handheld are its analog triggers, which SDL
+    keeps on axes -- and a resting trigger is -1 on some pads and 0 on others,
+    so the rest is learned rather than assumed."""
+
+    class Pad:
+        axes = [0.0, 0.0, 0.0, 0.0, -1.0, -1.0]  # both triggers rest at -1
+
+        def get_numaxes(self):
+            return len(self.axes)
+
+        def get_axis(self, axis):
+            return self.axes[axis]
+
+    pad = Pad()
+    app.joysticks = [pad]
+    fired: list[str] = []
+    app.key_down = lambda name, **kw: fired.append(name)
+
+    app.poll_triggers()  # learns the rest
+    assert fired == [], "a resting trigger fired"
+
+    pad.axes[4] = 1.0  # L2, the borrowed hour
+    app.poll_triggers()
+    assert fired == ["r"], "L2 did not fire the borrowed hour"
+
+    pad.axes[4] = -1.0  # released; R2 this time
+    app.poll_triggers()
+    pad.axes[5] = 1.0
+    app.poll_triggers()
+    assert fired == ["r", " "], "R2 did not fire the wait"
+
+
 def test_the_loop_body_survives_a_real_sequence(app, monkeypatch):
     """The whole order the window runs: events, poll, holds, tick, redraw.
 
