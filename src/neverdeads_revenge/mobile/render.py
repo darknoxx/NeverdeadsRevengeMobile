@@ -24,6 +24,8 @@ from __future__ import annotations
 import math
 import time
 
+import pygame
+
 from neverdeads_revenge.game.prologue import legend_rows
 from neverdeads_revenge.game.state import GameState, LogKind
 from neverdeads_revenge.world.generator import ESCAPE_DEPTH
@@ -42,6 +44,8 @@ from .theme import Style, blend, parse_style
 __all__ = [
     "regions",
     "viewport",
+    "map_crop",
+    "zoom_map",
     "screen_point",
     "draw_game",
     "hud_lines",
@@ -123,6 +127,83 @@ def viewport(state: GameState, map_w: int, map_h: int) -> tuple[int, int, int, i
     return left, top, view_w, view_h
 
 
+def map_band(
+    cols: int, rows: int, cell_w: int, cell_h: int
+) -> tuple[int, int, int, int]:
+    """The map band in pixels: ``(x, y, width, height)``."""
+    x0, y0, width, height = regions(cols, rows)["map"]
+    return x0 * cell_w, y0 * cell_h, width * cell_w, height * cell_h
+
+
+def map_crop(
+    state: GameState,
+    cols: int,
+    rows: int,
+    cell_w: int,
+    cell_h: int,
+    zoom: int,
+) -> tuple[int, int]:
+    """The top-left of the zoomed map band to show, so the hero stays centred.
+
+    The map is drawn at ``zoom`` times its size and then a window of the
+    *unzoomed* band size is shown; where that window sits is the whole question.
+    Centring it on the band would push the hero out of view whenever he stands
+    at the edge of the floor -- the viewport is already clamped there, so he is
+    off-centre in the band. So the window follows the hero, and is clamped to
+    the scaled image so it never shows past the map.
+    """
+    band_x, band_y, band_w, band_h = map_band(cols, rows, cell_w, cell_h)
+    if zoom <= 1:
+        return 0, 0
+    _, _, map_w, map_h = regions(cols, rows)["map"]
+    left, top, _, _ = viewport(state, map_w, map_h)
+    px, py = state.player.position
+    hero_x = (px - left + 0.5) * cell_w * zoom
+    hero_y = (py - top + 0.5) * cell_h * zoom
+    crop_x = round(hero_x - band_w / 2)
+    crop_y = round(hero_y - band_h / 2)
+    crop_x = max(0, min(crop_x, zoom * band_w - band_w))
+    crop_y = max(0, min(crop_y, zoom * band_h - band_h))
+    return crop_x, crop_y
+
+
+def zoom_map(
+    image,
+    state: GameState,
+    cols: int,
+    rows: int,
+    cell_w: int,
+    cell_h: int,
+    zoom: int,
+) -> None:
+    """Magnify the map band of an already-drawn frame, in place.
+
+    The fast way to a bigger playfield: the whole frame is drawn as it always
+    was, and only the map's own band is scaled and windowed back into place, so
+    the HUD and the log keep their size. The window follows the hero -- see
+    :func:`map_crop`.
+
+    Only the *visible* piece of the band is scaled, not the whole band scaled
+    and then cropped: at 2x that is a quarter of the pixels moved, and the
+    nearest-neighbour ``scale`` keeps it crisp, which is what a doubled bitmap
+    font wants anyway.
+    """
+    if zoom <= 1:
+        return
+    band_x, band_y, band_w, band_h = map_band(cols, rows, cell_w, cell_h)
+    crop_x, crop_y = map_crop(state, cols, rows, cell_w, cell_h, zoom)
+
+    src_w = max(1, round(band_w / zoom))
+    src_h = max(1, round(band_h / zoom))
+    src_x = max(0, min(round(crop_x / zoom), band_w - src_w))
+    src_y = max(0, min(round(crop_y / zoom), band_h - src_h))
+    # Views, not copies: ``scale`` reads the patch and returns a new surface, so
+    # the blit below never reads and writes the same pixels.
+    band = image.subsurface((band_x, band_y, band_w, band_h))
+    patch = band.subsurface((src_x, src_y, src_w, src_h))
+    image.blit(pygame.transform.scale(patch, (band_w, band_h)), (band_x, band_y))
+
+
 def screen_point(
     state: GameState,
     position,
@@ -130,14 +211,16 @@ def screen_point(
     rows: int,
     cell_w: int,
     cell_h: int,
+    zoom: int = 1,
 ) -> tuple[float, float] | None:
     """The centre of a dungeon square, as buffer pixels -- or ``None``.
 
     The buffer is the *camera*, not the dungeon: every moving pixel needs this
-    translation, and everything that skipped it drew in the wrong place.
+    translation, and everything that skipped it drew in the wrong place. When
+    the map is zoomed, the same translation is carried through the scale and the
+    window, so a particle still lands on the square it belongs to.
     """
-    areas = regions(cols, rows)
-    x0, y0, map_w, map_h = areas["map"]
+    x0, y0, map_w, map_h = regions(cols, rows)["map"]
     left, top, view_w, view_h = viewport(state, map_w, map_h)
     x, y = position
     if not (left <= x < left + view_w and top <= y < top + view_h):
@@ -145,7 +228,16 @@ def screen_point(
     # The map is the *middle* band, so a square's pixel is its cell inside
     # that band and not inside the frame. Skipping the band's own origin put
     # every sparkle in the HUD, a whole band above the thing it celebrated.
-    return ((x0 + x - left + 0.5) * cell_w, (y0 + y - top + 0.5) * cell_h)
+    point_x = (x0 + x - left + 0.5) * cell_w
+    point_y = (y0 + y - top + 0.5) * cell_h
+    if zoom <= 1:
+        return point_x, point_y
+    band_x, band_y, _, _ = map_band(cols, rows, cell_w, cell_h)
+    crop_x, crop_y = map_crop(state, cols, rows, cell_w, cell_h, zoom)
+    return (
+        band_x + zoom * (point_x - band_x) - crop_x,
+        band_y + zoom * (point_y - band_y) - crop_y,
+    )
 
 
 # -- the whole screen ---------------------------------------------------------

@@ -54,8 +54,16 @@ class SniffScreen(Screen):
             x + 2, y + 2, "raw from SDL, beside the name the game gives it",
             parse_style(ASH),
         )
+        buffer.text(
+            x + 2,
+            y + 3,
+            f"redraw {app.frame_ms():.1f} ms   map {app.map_zoom}x   "
+            f"scanlines {'on' if app.scanlines_on else 'off'}   "
+            f"bloom {'on' if app.bloom_on else 'off'}",
+            parse_style(f"bold {BONE}"),
+        )
 
-        row = y + 4
+        row = y + 5
         if not app.joysticks:
             buffer.text(
                 x + 2, row, "no pad seen -- a keyboard is all there is",

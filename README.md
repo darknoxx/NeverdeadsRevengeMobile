@@ -64,6 +64,25 @@ The flags:
 Screenshots of the same moment at all three, from `--screenshot`:
 `docs/zoom_s.png`, `docs/zoom_m.png`, `docs/zoom_l.png`.
 
+## The CRT, what is left of it
+
+The desktop build drew its CRT with a shader. At 420 ppi a fine scanline is a
+line nobody can see, so this fork left all of it out -- and then put back the
+part that *is* visible and *is* affordable on a software renderer:
+
+- **Scanlines**, coarse (every third row), baked into one overlay surface and
+  blitted -- not drawn per frame.
+- **Bloom**, done at a quarter of the size (a blur is a blur at a quarter of the
+  size, and the cost of one is the size of the surface it runs on).
+- **A magnified playfield**: the *map* is drawn at twice its size and windowed
+  back into its band, so the HUD and the log keep their font and the thing the
+  player is looking at is the thing that grows. The window follows the hero, so
+  he is never cropped out at the edge of a floor.
+
+All three are switches in the pause menu (`MAP ZOOM`, `SCANLINES`, `BLOOM`), and
+the pad bench shows the last redraw in milliseconds -- the honest number for
+whether the effects are affordable, measured on the device rather than guessed.
+
 ## The pad
 
 The gamepad is the only input the device has, and the keyboard stands in for it

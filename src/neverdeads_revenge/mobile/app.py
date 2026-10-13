@@ -50,7 +50,8 @@ from .buffer import PatternBuffer
 from .effects import Effects, Shake
 from .font import BitmapFont
 from .input import KeyEvent, button_name, dpad_direction, key_name
-from .render import draw_game, regions, screen_point
+from .crt import bloom, scanline_overlay
+from .render import draw_game, regions, screen_point, zoom_map
 from .screens.game import GameScreen
 from .screens.title import TitleScreen
 
@@ -60,6 +61,11 @@ __all__ = ["MobileApp", "ZOOMS", "GRID_FOR"]
 #: own metrics -- a cell is about six tenths as wide as it is tall, so a "cell
 #: size" in pixels is a number that would lie about the grid it produces.
 ZOOMS: dict[str, int] = {"S": 20, "M": 27, "L": 36}
+
+#: How much the *map* is magnified over the HUD and the log. The bars keep the
+#: font the zoom chose; the playfield is drawn twice as large and windowed back
+#: into its band, so the thing the player is looking at is the thing that grows.
+MAP_ZOOM = 2
 
 #: The device's screen. The frame is centred inside it and the remainder is
 #: black: at these zooms the leftover is 0 to 24 pixels, which is a bezel.
@@ -189,6 +195,16 @@ class MobileApp:
         self._dirty = True
         self._quit = False
 
+        # -- the CRT, what is left of it on a 420 ppi panel ----------------
+        self.map_zoom = MAP_ZOOM
+        self.scanlines_on = True
+        self.bloom_on = True
+        #: The scanline surface, built once per screen size and reused.
+        self._scan_overlay = None
+        #: How long the last redraw took, in milliseconds -- the honest number
+        #: for "is the CRT cheap enough", shown on the bench.
+        self._redraw_ms = 0.0
+
         # -- input ------------------------------------------------------------
         self.joysticks = [
             pygame.joystick.Joystick(i) for i in range(pygame.joystick.get_count())
@@ -229,7 +245,12 @@ class MobileApp:
         self._dirty = True
 
     # -- the picture ---------------------------------------------------------
-    def redraw(self) -> None:
+    def _compose(self) -> pygame.Surface:
+        """Draw the stack into one frame, then dress it with the CRT.
+
+        Shared by the window and the screenshot, so the two can never disagree
+        about where anything is -- which they did once, over the sparkles.
+        """
         self._buffer.clear()
         # An opaque modal: nothing under it is drawn. A menu is a panel, not a
         # window onto the dungeon, so the topmost modal starts the stack.
@@ -237,10 +258,42 @@ class MobileApp:
         for index, screen in enumerate(self.screens):
             if getattr(screen, "modal", False):
                 start = index
-        for screen in self.screens[start:]:
+        drawn = self.screens[start:]
+        for screen in drawn:
             screen.draw(self._buffer, self)
         image = self._buffer.render()
+
+        # The map is magnified only when the map is actually on screen: a modal
+        # starts the stack, so the band would otherwise hold a dialog and the
+        # zoom would magnify the wrong thing.
+        map_on_screen = self.run is not None and any(
+            isinstance(screen, GameScreen) for screen in drawn
+        )
+        if map_on_screen and self.map_zoom > 1:
+            zoom_map(
+                image,
+                self.run,
+                self._buffer.cols,
+                self._buffer.rows,
+                self.font.cell_w,
+                self.font.cell_h,
+                self.map_zoom,
+            )
         self.effects.draw(image)
+        if self.bloom_on:
+            bloom(image)
+        return image
+
+    def _scanlines(self) -> pygame.Surface:
+        """The scanline overlay, built once per screen size and then reused."""
+        size = self.screen.get_size() if self.screen is not None else self.surface_size
+        if self._scan_overlay is None or self._scan_overlay.get_size() != size:
+            self._scan_overlay = scanline_overlay(size)
+        return self._scan_overlay
+
+    def redraw(self) -> None:
+        started = time.perf_counter()
+        image = self._compose()
         if self.screen is not None:
             dx, dy = self.shake.offset()
             self.screen.fill((0, 0, 0))
@@ -249,26 +302,42 @@ class MobileApp:
             else:
                 scaled = pygame.transform.smoothscale(image, self.window_size)
                 self.screen.blit(scaled, (dx, dy))
+            if self.scanlines_on:
+                self.screen.blit(self._scanlines(), (0, 0))
+        # Measured before the flip, which may wait on the panel: this is the
+        # work, which is the number that says whether the CRT is affordable.
+        self._redraw_ms = (time.perf_counter() - started) * 1000.0
+        if self.screen is not None:
             pygame.display.flip()
         self._dirty = False
 
     def screenshot(self, path: str) -> None:
         """Render one frame to a file, without a window."""
-        self._buffer.clear()
-        start = 0
-        for index, screen in enumerate(self.screens):
-            if getattr(screen, "modal", False):
-                start = index
-        for screen in self.screens[start:]:
-            screen.draw(self._buffer, self)
-        # Particles go on the *frame*, exactly as redraw does it, so the two
-        # cannot disagree about where a sparkle lands.
-        frame = self._buffer.render()
-        self.effects.draw(frame)
+        frame = self._compose()
         image = pygame.Surface(self.surface_size)
         image.fill((0, 0, 0))
         image.blit(frame, self.offset)
+        if self.scanlines_on:
+            image.blit(self._scanlines(), (0, 0))
         pygame.image.save(image, path)
+
+    def frame_ms(self) -> float:
+        """How long the last redraw took, in milliseconds -- for the bench."""
+        return self._redraw_ms
+
+    # -- the CRT switches ----------------------------------------------------
+    def toggle_scanlines(self) -> None:
+        self.scanlines_on = not self.scanlines_on
+        self._dirty = True
+
+    def toggle_bloom(self) -> None:
+        self.bloom_on = not self.bloom_on
+        self._dirty = True
+
+    def toggle_map_zoom(self) -> None:
+        """Cycle the playfield between life-size and magnified."""
+        self.map_zoom = 1 if self.map_zoom > 1 else MAP_ZOOM
+        self._dirty = True
 
     # -- the screens' app surface --------------------------------------------
     def screen_point(self, position) -> tuple[float, float] | None:
@@ -283,6 +352,7 @@ class MobileApp:
             self._buffer.rows,
             self.font.cell_w,
             self.font.cell_h,
+            self.map_zoom,
         )
 
     def play(self, name: str | None) -> None:

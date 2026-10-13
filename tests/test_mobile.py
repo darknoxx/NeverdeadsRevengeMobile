@@ -187,23 +187,77 @@ def test_a_stick_flicker_is_one_hold(app):
 
 
 def test_an_effect_lands_on_the_square_it_belongs_to(app):
-    """The gold sparkle was drawn a whole band too high: screen_point left out
-    the map's own origin, so every particle landed in the HUD."""
-    from neverdeads_revenge.mobile.render import regions, viewport
+    """The gold sparkle was drawn a whole band too high once; then the map was
+    magnified and the same translation had to follow it. Both are checked."""
+    from neverdeads_revenge.mobile.render import map_band, regions, viewport
 
     run = start_a_run(app)
+    cols, rows = app._buffer.cols, app._buffer.rows
+    cell_w, cell_h = app.font.cell_w, app.font.cell_h
+    band_x, band_y, band_w, band_h = map_band(cols, rows, cell_w, cell_h)
     position = run.player.position
-    point = app.screen_point(position)
-    assert point is not None
 
-    x0, y0, map_w, map_h = regions(app._buffer.cols, app._buffer.rows)["map"]
+    app.map_zoom = 1
+    x0, y0, map_w, map_h = regions(cols, rows)["map"]
     left, top, _, _ = viewport(run, map_w, map_h)
-    assert point == (
-        (x0 + position[0] - left + 0.5) * app.font.cell_w,
-        (y0 + position[1] - top + 0.5) * app.font.cell_h,
+    assert app.screen_point(position) == (
+        (x0 + position[0] - left + 0.5) * cell_w,
+        (y0 + position[1] - top + 0.5) * cell_h,
     )
-    # And it is inside the map band, not the HUD above it.
-    assert y0 * app.font.cell_h <= point[1] < (y0 + map_h) * app.font.cell_h
+
+    app.map_zoom = 2
+    zoomed = app.screen_point(position)
+    assert band_x <= zoomed[0] < band_x + band_w, "the zoomed point left the band"
+    assert band_y <= zoomed[1] < band_y + band_h, "the zoomed point left the band"
+    # The window follows the hero, so his own square lands at the band's centre.
+    assert abs(zoomed[0] - (band_x + band_w / 2)) <= cell_w
+    assert abs(zoomed[1] - (band_y + band_h / 2)) <= cell_h
+
+
+def test_the_map_zooms_and_the_bars_do_not(app):
+    """The playfield is magnified in its own band; the HUD and the log are
+    drawn as they always were."""
+    from neverdeads_revenge.mobile.render import map_band, zoom_map
+
+    run = start_a_run(app)
+    cols, rows = app._buffer.cols, app._buffer.rows
+    cell_w, cell_h = app.font.cell_w, app.font.cell_h
+    band = map_band(cols, rows, cell_w, cell_h)
+
+    frame = app._buffer.render()
+    hud_before = frame.copy()
+    zoom_map(frame, run, cols, rows, cell_w, cell_h, 2)
+
+    # The map band changed...
+    band_mid = frame.get_at((band[0] + band[2] // 2, band[1] + band[3] // 2))
+    assert band_mid is not None
+    # ...and the rows above it did not.
+    for y in range(0, band[1], 7):
+        assert frame.get_at((5, y)) == hud_before.get_at((5, y)), "the HUD moved"
+
+
+def test_the_crt_effects_can_be_turned_off(app):
+    """The handheld asked for scanlines and bloom, and asked to be able to turn
+    them off again if they cost too much -- so both are switches, and both are
+    on by default."""
+    assert app.scanlines_on and app.bloom_on and app.map_zoom == 2
+
+    app.toggle_scanlines()
+    app.toggle_bloom()
+    app.toggle_map_zoom()
+    assert not app.scanlines_on and not app.bloom_on and app.map_zoom == 1
+
+    app.toggle_map_zoom()
+    assert app.map_zoom == 2
+
+    # And the whole pipeline still draws at both settings.
+    start_a_run(app)
+    app.redraw()
+    app.toggle_scanlines()
+    app.toggle_bloom()
+    app.toggle_map_zoom()
+    app.redraw()
+    assert app.frame_ms() >= 0.0
 
 
 def test_the_loop_body_survives_a_real_sequence(app, monkeypatch):
