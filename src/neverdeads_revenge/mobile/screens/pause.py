@@ -61,7 +61,7 @@ class PauseScreen(Screen):
         if name == "enter":
             self._choose(items[self.index][0], app)
             return True
-        if name in ("escape", "r"):
+        if name in ("escape", "r", "select"):
             app.pop()
             return True
         if name in ("s", "q", "m", "c", "p", "t", "g", "z", "x", "b", "f"):

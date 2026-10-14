@@ -78,14 +78,10 @@ SCREEN = (1240, 1080)
 POLLED_DIRECTIONS = frozenset({"up", "down", "left", "right"})
 
 #: How long a held direction moves once before it starts repeating, in seconds.
-#: A keyboard's auto-repeat delay, and it is here for the same reason: a tap
-#: should be one step however long the finger lingers, and only a *hold* should
-#: walk. Too short and a tap overshoots; too long and holding feels stuck.
-_REPEAT_DELAY = 0.30
-
-#: A direction lost and found again within this window is one hold, not two:
-#: the stick crossed the deadzone, the player did not press twice.
-_RELEASE_GRACE = 0.10
+#: A keyboard's auto-repeat delay, and here for the same reason: a tap should be
+#: one step however long the finger lingers, and only a *hold* should walk. Too
+#: short and a tap overshoots; too long and holding feels stuck.
+_REPEAT_DELAY = 0.22
 
 #: How long a held button waits before the app starts feeding it repeats, in
 #: seconds. A keyboard's auto-repeat delay, and it is what keeps a tap a tap:
@@ -250,10 +246,6 @@ class MobileApp:
         #: tap that lasted one frame too long moved twice, which is a player
         #: who overshoots the square they aimed at.
         self._repeat_from = 0.0
-        #: The direction last *pressed*, and when it was last lost, so a stick
-        #: flickering across the deadzone is read as one hold and not two.
-        self._last_dir: str | None = None
-        self._released_at = 0.0
         #: Buttons currently down. SDL reports a press and a release and no
         #: repeat between them -- which the holds in the game need (see
         #: :meth:`poll_holds`).
@@ -895,35 +887,26 @@ class MobileApp:
     def poll_held(self, now: float) -> None:
         """A pushed direction walks, at the hero's own pace.
 
-        Read on the clock rather than on events because a stick has no "press",
-        only a position -- and a held position has to repeat itself or the
-        player pushes it once per square. The pace is the hero's: the same
-        ``action_gap`` the desktop build throttles its repeats with, so a fast
-        hero walks fast on both.
+        Read on the clock rather than on events, because a d-pad is a *position*
+        -- a hat, or four buttons that report together -- and not a stream of
+        presses: a held position has to repeat itself, or the player pushes it
+        once per square. The pace is the hero's, the same ``action_gap`` the
+        desktop build throttles its repeats with, so a fast hero walks fast on
+        both.
 
-        Two guards keep a deliberate tap from becoming a lunge. A press moves
-        once and then waits out ``_REPEAT_DELAY`` before repeating, so a tap of
-        any ordinary length is exactly one square -- and a stick that flickers
-        across the deadzone is read as one hold rather than a fresh press, so
-        the wobble at the edge of a direction cannot add a step.
+        A press moves at once and then waits out ``_REPEAT_DELAY`` before it
+        repeats, so a tap of any ordinary length is exactly one square. There is
+        deliberately **no release grace**: it existed for a stick that flickered
+        across its deadzone, the stick is not read for movement any more, and all
+        it did in the end was swallow the second of two quick taps -- which is a
+        player saying "sometimes a press does nothing".
         """
         direction = self._direction_now()
         if direction is None:
-            if self._held_dir is not None:
-                self._released_at = now
             self._held_dir = None
             return
         if direction != self._held_dir:
-            if (
-                direction == self._last_dir
-                and now - self._released_at < _RELEASE_GRACE
-            ):
-                # The same direction, a moment after it was lost: the stick
-                # crossed the deadzone, the player did not press twice.
-                self._held_dir = direction
-                return
             self._held_dir = direction
-            self._last_dir = direction
             self._last_repeat = now
             self._repeat_from = now + _REPEAT_DELAY
             self.key_down(direction)

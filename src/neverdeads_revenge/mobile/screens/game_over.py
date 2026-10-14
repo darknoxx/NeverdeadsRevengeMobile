@@ -199,10 +199,10 @@ class NameEntryScreen(Screen):
             # B: one letter back, and a way out of a name with nothing in it.
             self.name = self.name[:-1]
             return True
-        if name in ("select", "l", "f", "?"):
-            self.finish(app, self.name or "???")
-            return True
-        if name in ("r", ">"):
+        if name in ("start", "select", ">"):
+            # Start is the "done" the hint already promised; Select does the same
+            # and ">" is the keyboard's. Nothing on the shoulders confirms a
+            # name: an accidental L1 used to finish the entry mid-word.
             self.finish(app, self.name or "???")
             return True
         return True

@@ -67,7 +67,9 @@ class GameScreen(Screen):
 
     # -- input --------------------------------------------------------------
     def key(self, name: str, event, app) -> bool:
-        if name == "escape":
+        if name in ("escape", "select"):
+            # B and Select both mean "hold still": B is the back button and
+            # Select is the menu button, and a handheld wants either.
             from .pause import PauseScreen
 
             app.push(PauseScreen())
@@ -77,7 +79,8 @@ class GameScreen(Screen):
 
             app.push(HelpScreen())
             return True
-        if name == "c":
+        if name in ("c", "start"):
+            # Start is the hero's own page -- the sheet -- as asked for.
             from .menus import CharacterScreen
 
             app.push(CharacterScreen(self.state))

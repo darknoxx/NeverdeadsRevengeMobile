@@ -92,11 +92,11 @@ if hasattr(pygame, "K_AC_BACK"):
 #: (L1 4, R1 5, L2 6, R2 7) had quietly put "escape" on L1 and nothing on R1.
 BUTTONS: dict[int, str] = {
     0: "enter",   # A -- the game's one verb: take, open, speak, descend
-    1: "escape",  # B -- back, and the pause menu
+    1: "escape",  # B -- back
     2: "q",       # X -- drink
     3: "i",       # Y -- the pack
-    4: "select",  # Select (Android's BACK)
-    6: "escape",  # Start -- the pause
+    4: "select",  # Select -- the pause menu
+    6: "start",   # Start -- the hero's own page (and "done" in the name entry)
     7: "f",       # L3 -- the ultimate
     8: "c",       # R3 -- the sheet
     9: "r",       # L1 -- the borrowed hour

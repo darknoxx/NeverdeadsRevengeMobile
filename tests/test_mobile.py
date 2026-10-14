@@ -155,15 +155,18 @@ def test_a_long_tap_is_still_one_step(app):
     now = time.monotonic()
     app.poll_held(now)
     once = run.player.steps
-    for step in (0.05, 0.10, 0.20, 0.25):
+    for step in (0.05, 0.10, 0.20):
         app.poll_held(now + step)
         assert run.player.steps == once, f"a tap moved again after {step}s"
-    app.poll_held(now + 0.40)  # the delay is spent: now it is a walk
+    app.poll_held(now + 0.45)  # the delay is spent: now it is a walk
     assert run.player.steps > once
 
 
-def test_a_stick_flicker_is_one_hold(app):
-    """A stick that crosses the deadzone for a frame is not a second press."""
+def test_a_quick_second_tap_moves_again(app):
+    """The handheld said "sometimes a press does nothing". That was a release
+    grace meant for a stick flickering across its deadzone -- but the stick is
+    not read for movement, so all the grace did was swallow the second of two
+    quick taps. Two taps now take two steps."""
     run = start_a_run(app)
     held = {"dir": "right"}
     app._direction_now = lambda: held["dir"]
@@ -172,18 +175,11 @@ def test_a_stick_flicker_is_one_hold(app):
     app.poll_held(now)
     once = run.player.steps
 
-    held["dir"] = None           # the wobble at the edge of the deadzone
-    app.poll_held(now + 0.02)
-    held["dir"] = "right"        # and back, still one hold
+    held["dir"] = None          # released
     app.poll_held(now + 0.04)
-    assert run.player.steps == once, "the flicker added a step"
-
-    # A real release, longer than the grace, is a fresh press.
-    held["dir"] = None
-    app.poll_held(now + 0.30)
-    held["dir"] = "right"
-    app.poll_held(now + 0.50)
-    assert run.player.steps == once + 1, "a real re-press did not move"
+    held["dir"] = "right"       # pressed again, quickly
+    app.poll_held(now + 0.06)
+    assert run.player.steps == once + 1, "the second tap was swallowed"
 
 
 def test_an_effect_lands_on_the_square_it_belongs_to(app):
@@ -296,8 +292,34 @@ def test_the_shoulders_are_the_hour_and_the_wait(app):
     # And the rest of the Android numbering, since it is not the PC one.
     assert button_name(7) == "f", "L3 is not the ultimate"
     assert button_name(8) == "c", "R3 is not the sheet"
-    assert button_name(6) == "escape", "Start is not the pause"
-    assert button_name(4) == "select", "Select moved"
+    assert button_name(6) == "start", "Start is not the hero's page"
+    assert button_name(4) == "select", "Select is not the pause"
+
+
+def test_start_confirms_the_name_and_select_pauses(app):
+    """Start finishes the name entry -- the hint always promised it -- and in the
+    dungeon Select pauses while Start opens the hero's page."""
+    from neverdeads_revenge.mobile.screens.game import GameScreen
+    from neverdeads_revenge.mobile.screens.game_over import NameEntryScreen
+
+    # Start (pad button 6) finishes the name entry.
+    done: list = []
+    app.screens = [NameEntryScreen(120, previous="", on_done=done.append)]
+    app.screens[-1].name = "NOX"
+    app.handle(pad_event(6, down=True))
+    app.handle(pad_event(6, down=False))
+    assert done == ["NOX"], "Start did not finish the name"
+
+    # In the dungeon, Start (6) is the sheet and Select (4) is the pause.
+    start_a_run(app)
+    app.handle(pad_event(6, down=True))
+    app.handle(pad_event(6, down=False))
+    assert top(app) == "CharacterScreen", "Start is not the hero's page"
+
+    app.screens = [GameScreen(app.run)]
+    app.handle(pad_event(4, down=True))
+    app.handle(pad_event(4, down=False))
+    assert top(app) == "PauseScreen", "Select does not pause"
 
 
 def test_the_gpu_view_draws_a_frame():

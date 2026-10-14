@@ -127,8 +127,9 @@ class HelpScreen(_Panel):
             ("B        back; in the dungeon, the pause menu", BONE),
             ("X        drink        Y   the pack", BONE),
             ("L1       the borrowed hour   R1  wait", BONE),
-            ("L3       the ultimate        START  pause", BONE),
-            ("R3       the sheet    L2  the legend    R2  this page", BONE),
+            ("L3       the ultimate        R3  the sheet", BONE),
+            ("START    your page           SELECT  pause", BONE),
+            ("L2       the legend          R2  this page", BONE),
             ("", ""),
             ("THE DUNGEON", f"bold {PURPLE}"),
         ]

@@ -120,10 +120,11 @@ on a laptop. Movement is the **D-pad** (and the arrow keys): a D-pad is a hat --
 eight positions and no in-between -- which is what a grid wants. The analog
 stick is deliberately *not* read for movement; it drifts and has no true rest.
 The **borrowed hour** and the **wait** are on the shoulders, L1 and R1; the
-**ultimate** is the left stick click, the **sheet** the right one, the legend and
-this page on L2 and R2, and Start pauses. Directions are **polled**; everything
-else -- buttons, letters, a menu's shortcuts -- arrives as an event, one press
-one action.
+**ultimate** is the left stick click, the **sheet** the right one, and the legend
+and this page L2 and R2. **Select** pauses, and **Start** opens the hero's own
+page -- and in the name entry Start is what finishes the name. Directions are
+**polled**; everything else -- buttons, letters, a menu's shortcuts -- arrives as
+an event, one press one action.
 
 One thing to know if the mapping is ever touched again: on Android the button
 **numbers are not the PC ones**. SDL maps each Android keycode to an
