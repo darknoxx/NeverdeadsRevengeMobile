@@ -19,11 +19,12 @@ import pygame
 
 __all__ = ["GpuView"]
 
-#: The bloom is a sixth of the screen: a blur is a blur at a sixth of the size,
+#: The bloom is a fifth of the screen: a blur is a blur at a fifth of the size,
 #: and the cost of one is the size of the surface it runs on.
-_BLOOM_DIVISOR = 6
-#: How bright the added glow is, out of 255. A hint, not a wash.
-_BLOOM_LEVEL = 130
+_BLOOM_DIVISOR = 5
+#: How bright the added glow is, out of 255. A hint, not a wash -- but it has to
+#: be a hint that can be seen at all.
+_BLOOM_LEVEL = 150
 #: The scanline pattern: every third row is multiplied down to this.
 _SCANLINE_STEP = 3
 _SCANLINE_LEVEL = 120

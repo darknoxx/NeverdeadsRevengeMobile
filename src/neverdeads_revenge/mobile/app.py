@@ -970,6 +970,11 @@ class MobileApp:
     def loop(self) -> None:
         clock = pygame.time.Clock()
         running = True
+        # Present a handful of frames before anything is touched. A window that
+        # has just been made can swallow its first present -- the compositor has
+        # not mapped it yet -- and the symptom is a black screen that only comes
+        # to life on the first key press.
+        warmup = 4
         self._acquire_wakelock()
         while running and not self._quit:
             dt = clock.tick(60) / 1000.0
@@ -983,6 +988,9 @@ class MobileApp:
             self.poll_held(now)
             self.poll_holds(now)
             self.tick(dt)
+            if warmup > 0:
+                warmup -= 1
+                self._dirty = True
             if self._dirty:
                 self.redraw()
         self._release_wakelock()
