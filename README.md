@@ -148,5 +148,6 @@ against a real pad.
 
 ## Licence
 
-MIT. See `LICENSE`. DejaVu Sans Mono travels with the game under its own
-licence (see `assets/fonts/`).
+AGPL-3.0-or-later. See `LICENSE` for the text — in short, pass it on, changed
+or not, and the source goes with it, under the same licence. DejaVu Sans Mono
+travels with the game under its own licence (see `assets/fonts/`).

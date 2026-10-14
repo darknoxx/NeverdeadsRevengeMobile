@@ -8,13 +8,13 @@ version = "0.1.0"
 description = "Neverdead's Revenge Mobile -- the same dungeon, on a handheld."
 readme = "README.md"
 requires-python = ">=3.12"
-license = { text = "MIT" }
+license = { text = "AGPL-3.0-or-later" }
 license-files = ["LICENSE"]
 authors = [{ name = "darknoxx" }]
 keywords = ["roguelite", "android", "handheld", "pygame", "retro", "game"]
 classifiers = [
     "Intended Audience :: End Users/Desktop",
-    "License :: OSI Approved :: MIT License",
+    "License :: OSI Approved :: GNU Affero General Public License v3 or later (AGPLv3+)",
     "Programming Language :: Python :: 3",
     "Topic :: Games/Entertainment :: Role-Playing",
 ]
