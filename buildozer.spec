@@ -59,6 +59,10 @@ android.ndk_path = ~/android-toolchain/sdk/ndk/android-ndk-r25b
 android.accept_sdk_license = True
 android.skip_update = True
 
+# A release *apk*, not an app bundle: this is sideloaded onto a handheld, and an
+# .aab is a Play Store artifact that nothing can install by hand.
+android.release_artifact = apk
+
 # The vendored recipe. buildozer hands this to p4a, which looks for a recipe
 # directory of that name here before its own.
 p4a.local_recipes = ./p4a-recipes

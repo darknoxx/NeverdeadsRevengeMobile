@@ -232,26 +232,21 @@ def test_the_map_zooms_and_the_bars_do_not(app):
         assert frame.get_at((5, y)) == hud_before.get_at((5, y)), "the HUD moved"
 
 
-def test_the_crt_effects_can_be_turned_off(app):
-    """The handheld asked for scanlines and bloom, then found them too dear --
-    so both are switches, and both are *off* by default."""
-    assert not app.scanlines_on and not app.bloom_on
+def test_the_scanlines_can_be_turned_off(app):
+    """Scanlines are on by default -- they are what a 420 ppi panel wants and
+    they are cheap on either path -- and there is a switch to lose them."""
+    assert app.scanlines_on
     assert app.map_zoom == 2  # the magnified playfield is the cheap one
 
     app.toggle_scanlines()
-    app.toggle_bloom()
-    app.toggle_map_zoom()
-    assert app.scanlines_on and app.bloom_on and app.map_zoom == 1
-
-    app.toggle_map_zoom()
-    assert app.map_zoom == 2
+    assert not app.scanlines_on
+    app.toggle_scanlines()
+    assert app.scanlines_on
 
     # And the whole pipeline still draws at both settings.
     start_a_run(app)
     app.redraw()
     app.toggle_scanlines()
-    app.toggle_bloom()
-    app.toggle_map_zoom()
     app.redraw()
     render_ms, post_ms, present_ms = app.timings()
     assert render_ms >= 0.0 and post_ms >= 0.0 and present_ms >= 0.0
@@ -291,7 +286,7 @@ def test_the_shoulders_are_the_hour_and_the_wait(app):
     assert button_name(10) == "space", "R1 is not the wait"
     # And the rest of the Android numbering, since it is not the PC one.
     assert button_name(7) == "f", "L3 is not the ultimate"
-    assert button_name(8) == "c", "R3 is not the sheet"
+    assert button_name(8) == "f", "R3 is not the ultimate"
     assert button_name(6) == "start", "Start is not the hero's page"
     assert button_name(4) == "select", "Select is not the pause"
 
@@ -342,7 +337,6 @@ def test_the_gpu_view_draws_a_frame():
             offset=(10, 20),
             shake=(1, -1),
             particles=effects.particles,
-            bloom=True,
             scanlines=True,
             overlay=overlay,
         )
@@ -354,13 +348,11 @@ def test_the_gpu_view_draws_a_frame():
 
 def test_the_app_falls_back_to_software_without_a_gpu(app):
     """A headless app has no window, so it is on the software path -- and that
-    path must still draw, with the CRT baked in."""
+    path must still draw, with the scanline baked in."""
     assert app.gpu is None
     assert app.gpu_active() is False
-    app.bloom_on = True
     app.scanlines_on = True
-    app.toggle_bloom()  # off again, and no crash on the software switches
-    app.toggle_scanlines()
+    app.toggle_scanlines()  # and back on, with no crash on the software switch
     start_a_run(app)
     app.redraw()
     assert app.timings()[0] >= 0.0

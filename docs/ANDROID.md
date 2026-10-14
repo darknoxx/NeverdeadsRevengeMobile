@@ -176,6 +176,28 @@ game's data is inside `assets/private.tar` (fonts, sounds, the package and
 `main.pyc`), pygame is in `libpybundle.so`, and the SDL2/python libraries are in
 `lib/arm64-v8a/`. What is left is running it on the device.
 
+### The release APK
+
+`buildozer android release` makes an **unsigned** APK -- the spec sets
+`android.release_artifact = apk`, because the default is an `.aab`, which is a
+Play Store artifact nothing can sideload. Sign it once with a keystore of your
+own:
+
+```sh
+BT=~/android-toolchain/sdk/build-tools/33.0.2
+KS=~/android-toolchain/release.keystore        # keytool -genkeypair, once
+
+"$BT/zipalign" -f 4 bin/*-release-unsigned.apk /tmp/aligned.apk
+"$BT/apksigner" sign --ks "$KS" --ks-pass pass:ndrm-release \
+    --key-pass pass:ndrm-release --ks-key-alias ndrm \
+    --out bin/neverdeads_revenge-0.1.0-arm64-v8a-release.apk /tmp/aligned.apk
+"$BT/apksigner" verify --print-certs bin/*-release.apk
+```
+
+The result installs the same way, is not debuggable, and keeps the package name
+`org.darknoxx.neverdeads_revenge`.
+
+
 ## What to expect the first time
 
 The recipe in `p4a-recipes/` has now been built once, and the traps above are

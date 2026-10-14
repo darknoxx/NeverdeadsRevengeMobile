@@ -98,7 +98,7 @@ BUTTONS: dict[int, str] = {
     4: "select",  # Select -- the pause menu
     6: "start",   # Start -- the hero's own page (and "done" in the name entry)
     7: "f",       # L3 -- the ultimate
-    8: "c",       # R3 -- the sheet
+    8: "f",       # R3 -- the ultimate (either stick click)
     9: "r",       # L1 -- the borrowed hour
     10: "space",  # R1 -- wait
     15: "l",      # L2 -- the legend

@@ -118,7 +118,7 @@ class HelpScreen(_Panel):
     hint = "D-PAD scroll   B closes"
 
     def lines(self, app) -> list[tuple[str, str]]:
-        from neverdeads_revenge.game.prologue import terrain_help
+        from neverdeads_revenge.game.prologue import LEGEND_TERRAIN
 
         rows = [
             ("THE PAD", f"bold {PURPLE}"),
@@ -127,13 +127,17 @@ class HelpScreen(_Panel):
             ("B        back; in the dungeon, the pause menu", BONE),
             ("X        drink        Y   the pack", BONE),
             ("L1       the borrowed hour   R1  wait", BONE),
-            ("L3       the ultimate        R3  the sheet", BONE),
+            ("L3 / R3  the ultimate", BONE),
             ("START    your page           SELECT  pause", BONE),
             ("L2       the legend          R2  this page", BONE),
             ("", ""),
             ("THE DUNGEON", f"bold {PURPLE}"),
         ]
-        rows += [(line, BONE) for line in terrain_help().splitlines()]
+        # Built from the tiles themselves, not from ``terrain_help()``: that
+        # string is written in the terminal's rich-text markup, and this panel
+        # draws one style per line, so the tags came out as words -- "[bold]#[/]
+        # a rough wall".
+        rows += [(f"{tile.glyph}   {tile.description}", BONE) for tile in LEGEND_TERRAIN]
         return rows
 
 

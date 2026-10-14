@@ -50,7 +50,7 @@ from .buffer import PatternBuffer
 from .effects import Effects, Shake
 from .font import BitmapFont
 from .input import KeyEvent, button_name, dpad_direction, key_name
-from .crt import bloom, scanlines
+from .crt import scanlines
 from .render import draw_game, pulse_level, regions, screen_point, zoom_map
 from .screens.game import GameScreen
 from .screens.title import TitleScreen
@@ -200,11 +200,11 @@ class MobileApp:
         self._quit = False
 
         # -- the CRT, what is left of it on a 420 ppi panel ----------------
-        # Both off by default: the handheld found them too dear for what they
-        # give, so they are opt-in switches in the pause menu, not defaults.
+        # The scanlines are on by default now: they are cheap on either path and
+        # they are what a 420 ppi panel wants. There is no bloom -- it was tried
+        # twice and never looked like anything worth what it cost.
         self.map_zoom = MAP_ZOOM
-        self.scanlines_on = False
-        self.bloom_on = False
+        self.scanlines_on = True
         #: The rendered glyph frame, rebuilt only when the *buffer* changes --
         #: see :meth:`redraw`. Effects and the shake reuse it, so a blood burst
         #: no longer re-renders two thousand cells a frame.
@@ -217,7 +217,7 @@ class MobileApp:
         self._pulse_level = -1.0
         #: The last redraw, split up: the honest numbers for "is the CRT
         #: affordable", shown on the bench. ``render`` is the glyph frame,
-        #: ``post`` is bloom and scanlines, ``present`` is blit and flip.
+        #: ``post`` is the scanline, ``present`` is the blit or the GPU draw.
         self._render_ms = 0.0
         self._post_ms = 0.0
         self._present_ms = 0.0
@@ -298,13 +298,10 @@ class MobileApp:
             return None
 
     def _compose_frame(self) -> pygame.Surface:
-        """Draw the stack into one finished frame: glyphs, zoom, and the CRT.
+        """Draw the stack into one finished frame: glyphs, map zoom, scanlines.
 
-        This is the expensive part -- two thousand blits, a map scale, and the
-        bloom -- so it is the part that is cached: see :meth:`redraw`. The CRT
-        is baked in *here* rather than applied per frame, because per frame is
-        what made the effects unplayable on the handheld: bloom ran sixty times
-        a second over a blood burst that changed nothing but the dots.
+        This is the expensive part -- two thousand blits and a map scale -- so it
+        is the part that is cached: see :meth:`redraw`.
         """
         self._buffer.clear()
         # An opaque modal: nothing under it is drawn. A menu is a panel, not a
@@ -334,14 +331,11 @@ class MobileApp:
                 self.font.cell_h,
                 self.map_zoom,
             )
-        # The CRT is baked in only when there is no GPU to draw it: on the GPU
-        # it is a per-present draw, and baking it would pay for it on every
+        # The scanline is baked in only when there is no GPU to draw it: on the
+        # GPU it is a per-present draw, and baking it would pay for it on every
         # *turn* instead -- which is exactly the cost the GPU exists to remove.
-        if self.gpu is None:
-            if self.bloom_on:
-                bloom(image)
-            if self.scanlines_on:
-                scanlines(image)
+        if self.gpu is None and self.scanlines_on:
+            scanlines(image)
         return image
 
     def redraw(self) -> None:
@@ -351,11 +345,10 @@ class MobileApp:
         changes. Effects and the shake draw over the cached copy, so a blood
         burst costs a copy and a few dots instead of two thousand cell blits.
 
-        Then there are two ways to put it up. With a GPU, the CRT is a handful
-        of renderer draws on every present, which is cheap; without one, it is
+        Then there are two ways to put it up. With a GPU, the scanline is one
+        renderer draw on every present, which is nearly free; without one, it is
         baked into the cached frame instead, so it is paid for on a *turn* and
-        never on an animation frame. Same picture, and the fallback is the only
-        version the software renderer can afford.
+        never on an animation frame.
         """
         started = time.perf_counter()
         if self._glyph_frame is None or self._buffer_dirty:
@@ -382,11 +375,10 @@ class MobileApp:
             offset=self.offset,
             shake=self.shake.offset(),
             particles=self.effects.particles,
-            bloom=self.bloom_on,
             scanlines=self.scanlines_on,
             overlay=overlay,
         )
-        self._post_ms = 0.0  # bloom and scanlines ride along inside the present
+        self._post_ms = 0.0  # the scanline rides along inside the present
         self._present_ms = (time.perf_counter() - started) * 1000.0
 
     def _redraw_software(self) -> None:
@@ -421,12 +413,9 @@ class MobileApp:
     def screenshot(self, path: str) -> None:
         """Render one frame to a file, without a window."""
         frame = self._compose_frame()
-        if self.gpu is not None:
+        if self.gpu is not None and self.scanlines_on:
             # The GPU dresses the frame at present; a file has to carry it.
-            if self.bloom_on:
-                bloom(frame)
-            if self.scanlines_on:
-                scanlines(frame)
+            scanlines(frame)
         self.effects.draw(frame)
         image = pygame.Surface(self.surface_size)
         image.fill((0, 0, 0))
@@ -472,14 +461,8 @@ class MobileApp:
         self.scanlines_on = not self.scanlines_on
         self._dirty = True
         if self.gpu is None:
-            # The software path bakes the CRT into the cached frame, so a switch
-            # means the frame must be rebuilt -- once, not per frame.
-            self._buffer_dirty = True
-
-    def toggle_bloom(self) -> None:
-        self.bloom_on = not self.bloom_on
-        self._dirty = True
-        if self.gpu is None:
+            # The software path bakes the scanline into the cached frame, so a
+            # switch means the frame must be rebuilt -- once, not per frame.
             self._buffer_dirty = True
 
     def toggle_map_zoom(self) -> None:

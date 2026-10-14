@@ -171,7 +171,7 @@ class NameEntryScreen(Screen):
         buffer.text(
             x + 3,
             y + height - 1,
-            "d-pad pick   A take   B back   start done"[: width - 6],
+            "A take   B back   START done"[: width - 6],
             parse_style(ASH),
         )
 

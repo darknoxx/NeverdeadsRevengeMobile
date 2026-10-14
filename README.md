@@ -77,41 +77,42 @@ things said.
 ## The CRT, what is left of it
 
 The desktop build drew its CRT with a shader. At 420 ppi a fine scanline is a
-line nobody can see, so this fork left all of it out -- and then put back the
-part that *is* visible:
+line nobody can see, so this fork left all of it out and then put back the part
+that *is* visible:
 
-- **Scanlines**, coarse (every third row).
-- **Bloom**, a downscale, a dim and an additive upscale.
+- **Scanlines**, coarse (every third row). On either path, and on by default.
 - **A magnified playfield**: the *map* is drawn at twice its size and windowed
   back into its band, so the HUD and the log keep their font and the thing the
   player is looking at is the thing that grows. The window follows the hero, so
   he is never cropped out at the edge of a floor.
 
-All three are switches in the pause menu (`MAP ZOOM`, `SCANLINES`, `BLOOM`), and
+There is no **bloom**. It was tried twice -- baked into the cached frame, then
+drawn on the GPU -- and never looked like anything worth what it cost, so it is
+gone rather than carried.
+
+Both survivors are switches in the pause menu (`MAP ZOOM`, `SCANLINES`), and
 `SHOW FPS` puts a live readout in the corner of the screen (drawn straight onto
 the panel, not into the buffer, so measuring does not force the re-render it
 measures). The pad bench shows whether the GPU is in use and the last and worst
 `render` / `post` / `present` in milliseconds.
 
-### Two ways to draw the CRT
+### Two ways to draw the scanline
 
-On a **software** renderer every full-screen effect is paid in CPU, and the
-handheld found it unaffordable: bloom there was 2 fps. So there are two paths,
-and the app picks one at startup.
+On a **software** renderer a full-screen effect is paid in CPU, and the handheld
+found it unaffordable at first. So there are two paths, and the app picks one at
+startup.
 
 - **With a GPU** (`pygame._sdl2`, which is OpenGL ES on Android): the frame is
   uploaded once per change, the particles are drawn as GPU rectangles, and the
-  bloom and scanlines are renderer draws on every present -- about 2 ms even
-  through SDL's *software* renderer, and far less on GL.
-- **Without one**: the CRT is baked into the cached frame instead, so it is paid
-  for once per *turn* and never per animation frame. This is the fallback, and
-  it is what the software renderer can afford.
+  scanline is one multiply with a baked pattern on every present.
+- **Without one**: the scanline is baked into the cached frame instead, so it is
+  paid for once per *turn* and never per animation frame. This is the fallback,
+  and it is what the software renderer can afford.
 
 Either way the frame itself -- glyphs and map zoom -- is rebuilt only when the
 buffer changes, so a blood burst costs a copy and a few dots instead of two
 thousand cell blits. The ultimate's breath is *stepped*, not smooth, so it does
-not rebuild the frame sixty times a second for a shimmer. Scanlines and bloom
-default to **off**; on the device, turn them on in the pause menu.
+not rebuild the frame sixty times a second for a shimmer.
 
 ## The pad
 
@@ -120,11 +121,11 @@ on a laptop. Movement is the **D-pad** (and the arrow keys): a D-pad is a hat --
 eight positions and no in-between -- which is what a grid wants. The analog
 stick is deliberately *not* read for movement; it drifts and has no true rest.
 The **borrowed hour** and the **wait** are on the shoulders, L1 and R1; the
-**ultimate** is the left stick click, the **sheet** the right one, and the legend
-and this page L2 and R2. **Select** pauses, and **Start** opens the hero's own
-page -- and in the name entry Start is what finishes the name. Directions are
-**polled**; everything else -- buttons, letters, a menu's shortcuts -- arrives as
-an event, one press one action.
+**ultimate** is either stick click, and the legend and this page L2 and R2.
+**Select** pauses, and **Start** opens the hero's own page -- the sheet -- and in
+the name entry Start is what finishes the name. Directions are **polled**;
+everything else -- buttons, letters, a menu's shortcuts -- arrives as an event,
+one press one action.
 
 One thing to know if the mapping is ever touched again: on Android the button
 **numbers are not the PC ones**. SDL maps each Android keycode to an
