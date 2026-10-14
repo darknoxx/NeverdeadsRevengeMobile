@@ -30,7 +30,6 @@ class TitleScreen(Screen):
             ("h", "SCORES"),
             ("l", "CHRONICLE"),
             ("d", "DELETE PROGRESS"),
-            ("p", "THE PAD"),
             ("q", "QUIT"),
         ]
         return items
@@ -141,12 +140,5 @@ class TitleScreen(Screen):
             app.open_chronicle()
         elif key == "d":
             app.open_delete_progress()
-        elif key == "p":
-            # The bench, one press from the title: a pad that is misbehaving is
-            # often a pad whose menus will not hold still, so the bench cannot
-            # be buried behind a menu that is running away.
-            from .sniff import SniffScreen
-
-            app.push(SniffScreen())
         elif key == "q":
             app.quit_requested()
